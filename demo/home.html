@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>工作台</title>
+</head>
+<body>
+  <h1>工作台</h1>
+  <p>登录成功</p>
+  <a href="/order.html">订单管理</a>
+  <script>
+    if (!localStorage.getItem('demo_token')) location.href = '/login.html';
+  </script>
+</body>
+</html>

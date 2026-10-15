@@ -1,0 +1,29 @@
+# 依赖与密钥
+node_modules/
+.env
+.env.local
+
+# 功能实例产物（ADR 0001）— 保留 _example
+knowledge/features/*
+!knowledge/features/_example/
+!knowledge/features/_example/**
+
+# 分析草稿与探针
+artifacts/*
+!artifacts/.gitkeep
+
+# 可重建编译物与报告
+cases/generated/*
+!cases/generated/.gitkeep
+elements/*.generated.yaml
+reports/*
+!reports/.gitkeep
+
+# Playwright 登录态
+playwright/.auth/*
+!playwright/.auth/.gitkeep
+
+# 构建与日志
+dist/
+*.log
+.DS_Store

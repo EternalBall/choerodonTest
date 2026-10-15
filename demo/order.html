@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>订单管理</title>
+  <style>
+    body { font-family: sans-serif; margin: 24px; }
+    .toolbar { display: flex; gap: 8px; align-items: end; margin-bottom: 16px; }
+    label { display: block; font-size: 12px; color: #555; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; }
+    .spin { color: #888; }
+    dialog { border: 1px solid #ccc; border-radius: 8px; padding: 16px; min-width: 420px; }
+    .toast {
+      position: fixed; right: 16px; top: 16px; background: #067d3f; color: #fff;
+      padding: 10px 14px; border-radius: 6px;
+    }
+    .form { border: 1px solid #eee; padding: 16px; margin-top: 16px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div data-testid="order-page-ready">
+    <h1>订单管理</h1>
+    <div class="toolbar">
+      <div>
+        <label for="orderNo">订单号</label>
+        <input id="orderNo" />
+      </div>
+      <button id="searchBtn">查询</button>
+      <button id="createBtn">新建</button>
+    </div>
+    <div id="spin" class="spin hidden" data-testid="order-table-spin">加载中…</div>
+    <table data-testid="order-table" id="orderTable">
+      <thead><tr><th>订单号</th><th>客户</th><th>名称</th><th>操作</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div id="formPanel" class="form hidden" data-testid="order-form-ready">
+    <h2>新建订单</h2>
+    <div>
+      <label for="customer">客户</label>
+      <input id="customer" readonly />
+      <button type="button" id="pickCustomer">选择客户</button>
+    </div>
+    <div style="margin-top:12px">
+      <label for="orderName">订单名称</label>
+      <input id="orderName" />
+    </div>
+    <button id="submitBtn" style="margin-top:12px">提交</button>
+  </div>
+
+  <dialog id="picker" data-testid="customer-picker-modal">
+    <h3>选择客户</h3>
+    <input id="pickerSearch" placeholder="搜索客户" />
+    <table id="pickerTable" style="margin-top:8px">
+      <thead><tr><th>姓名</th><th>编码</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div style="margin-top:12px; text-align:right">
+      <button id="pickerCancel">取消</button>
+      <button id="pickerOk">确定</button>
+    </div>
+  </dialog>
+
+  <div id="toast" class="toast hidden" data-testid="success-toast">保存成功</div>
+
+  <script>
+    const rows = [
+      { no: 'ORD-1001', customer: '张三', name: '办公采购' },
+      { no: 'ORD-1002', customer: '李四', name: '物料补充' },
+    ];
+    const customers = [
+      { name: '张三', code: 'C001' },
+      { name: '李四', code: 'C002' },
+      { name: '王五', code: 'C003' },
+    ];
+    let selectedCustomer = null;
+
+    function renderOrders(list) {
+      const tb = document.querySelector('#orderTable tbody');
+      tb.innerHTML = list.map(r =>
+        `<tr><td>${r.no}</td><td>${r.customer}</td><td>${r.name}</td><td><button class="detail">详情</button></td></tr>`
+      ).join('');
+    }
+
+    renderOrders(rows);
+
+    document.getElementById('searchBtn').onclick = () => {
+      const spin = document.getElementById('spin');
+      spin.classList.remove('hidden');
+      setTimeout(() => {
+        const q = document.getElementById('orderNo').value.trim();
+        renderOrders(q ? rows.filter(r => r.no.includes(q)) : rows);
+        spin.classList.add('hidden');
+      }, 400);
+    };
+
+    document.getElementById('createBtn').onclick = () => {
+      document.getElementById('formPanel').classList.remove('hidden');
+    };
+
+    const dialog = document.getElementById('picker');
+    document.getElementById('pickCustomer').onclick = () => {
+      selectedCustomer = null;
+      renderCustomers(customers);
+      dialog.showModal();
+    };
+
+    function renderCustomers(list) {
+      const tb = document.querySelector('#pickerTable tbody');
+      tb.innerHTML = list.map(c =>
+        `<tr data-name="${c.name}"><td>${c.name}</td><td>${c.code}</td></tr>`
+      ).join('');
+      tb.querySelectorAll('tr').forEach(tr => {
+        tr.onclick = () => {
+          selectedCustomer = tr.dataset.name;
+          tb.querySelectorAll('tr').forEach(x => x.style.background = '');
+          tr.style.background = '#e6f4ff';
+        };
+      });
+    }
+
+    document.getElementById('pickerSearch').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const q = e.target.value.trim();
+        renderCustomers(customers.filter(c => c.name.includes(q)));
+      }
+    });
+
+    document.getElementById('pickerOk').onclick = () => {
+      if (selectedCustomer) {
+        document.getElementById('customer').value = selectedCustomer;
+        dialog.close();
+      }
+    };
+    document.getElementById('pickerCancel').onclick = () => dialog.close();
+
+    document.getElementById('submitBtn').onclick = () => {
+      const toast = document.getElementById('toast');
+      toast.classList.remove('hidden');
+      setTimeout(() => toast.classList.add('hidden'), 2000);
+    };
+  </script>
+</body>
+</html>

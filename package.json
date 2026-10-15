@@ -1,0 +1,33 @@
+{
+  "name": "web-auto-test",
+  "version": "0.1.0",
+  "private": true,
+  "description": "组件知识 + meta_ops/flows → Playwright 配置驱动执行",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "ata": "tsx src/cli/index.ts",
+    "test:e2e": "playwright test",
+    "report": "playwright show-report reports/html",
+    "auth:setup": "tsx src/cli/index.ts auth"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^13.1.0",
+    "fast-glob": "^3.3.3",
+    "dotenv": "^16.4.7",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "tsx": "^4.19.3",
+    "yaml": "^2.7.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0",
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2"
+  },
+  "packageManager": "pnpm@10.27.0+sha1.7220f3ec270b9e3b3b56cd149ad8d88bdf1b8823"
+}

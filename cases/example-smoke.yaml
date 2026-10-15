@@ -1,0 +1,87 @@
+suite: 示例冒烟（本地 demo）
+baseURL: http://127.0.0.1:4173
+
+cases:
+  - id: TC_DEMO_QUERY
+    title: 订单列表查询
+    tags: [demo, query]
+    steps:
+      - name: 打开订单列表
+        action: goto
+        args:
+          path: /order.html
+        ready:
+          visible: order.pageReady
+        screenshot: true
+
+      - name: 输入订单号
+        action: fill
+        args:
+          target: order.search_订单号
+          value: ORD-1001
+        screenshot: true
+
+      - name: 点击查询
+        action: click
+        args:
+          target: order.searchBtn
+        ready:
+          hidden: order.tableSpin
+        assert:
+          - type: visible
+            target: order.table
+        screenshot: true
+
+  - id: TC_DEMO_CREATE
+    title: 新建订单并弹表选客户
+    tags: [demo, create]
+    steps:
+      - name: 打开订单列表
+        action: goto
+        args:
+          path: /order.html
+        ready:
+          visible: order.pageReady
+        screenshot: true
+
+      - name: 点击新建
+        action: click
+        args:
+          target: order.createBtn
+        ready:
+          visible: order.formReady
+        screenshot: true
+
+      - name: 弹表选择客户
+        action: pickFromTable
+        args:
+          open: order.pickerOpen
+          dialog: order.pickerDialog
+          search:
+            target: order.pickerSearch
+            value: 张三
+          row:
+            by: text
+            value: 张三
+          confirm: order.pickerConfirm
+        assert:
+          - type: valueEquals
+            target: order.customerField
+            value: 张三
+        screenshot: true
+
+      - name: 填写订单名称
+        action: fill
+        args:
+          target: order.nameInput
+          value: 自动化订单
+        screenshot: true
+
+      - name: 提交
+        action: click
+        args:
+          target: order.submitBtn
+        assert:
+          - type: visible
+            target: order.successToast
+        screenshot: true

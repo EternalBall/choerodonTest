@@ -1,0 +1,168 @@
+# Choerodon / HZero 平台组件定位库
+# 同组件 DOM 在本系统内一致；禁止用逗号并集（会触发 Playwright strict mode）
+# 生成 elements 时以此为底，功能层只覆盖业务字段
+
+pageReady:
+  css: .hmes-style
+  note: 页面根；勿写 .hmes-style, .c7n-pro-table-wrapper
+
+table:
+  css: .c7n-pro-table.c7n-pro-table-bordered
+  note: 外层是 div.c7n-pro-table，勿再写 ", table"
+
+tableBody:
+  css: .c7n-pro-table-tbody
+
+tableRow:
+  css: .c7n-pro-table-row
+
+tableEmpty:
+  text: 暂无数据
+  note: 列表/子表空态文案；断言用 assertTableEmpty / assertTableHasRows
+
+pagination:
+  css: .c7n-pro-table-pagination
+
+tableSpin:
+  css: .c7n-spin-spinning, .ant-spin-spinning
+
+filterBar:
+  css: .c7n-pro-table-dynamic-filter-bar
+
+addFilter:
+  css: .c7n-pro-table-add-fields
+
+filterPopup:
+  css: .c7n-pro-dropdown-popup .c7n-pro-table-filter-list
+
+filterSearch:
+  css: '.c7n-pro-table-filter-list input.c7n-pro-input[placeholder="搜索过滤条件"]'
+
+searchBtn:
+  css: .c7n-pro-table-filter-menu-query
+  note: filterBar 查询是 refresh 图标，不是文案「查询」
+
+resetBtn:
+  role: button
+  name: 重置
+
+createBtn:
+  role: button
+  name: 新建
+
+# 详情只读态（canEdit=false）
+detailReady:
+  role: button
+  name: 编辑
+
+editBtn:
+  role: button
+  name: 编辑
+
+# 新建 / 点编辑后的可写态（页头保存；勿仅依赖 .page-head-operator，站点分配等页结构可能不同）
+formReady:
+  css: .page-head button:has(.icon-save)
+
+editReady:
+  css: .page-head button:has(.icon-save)
+
+submitBtn:
+  css: .page-head button:has(.icon-save)
+
+saveBtn:
+  css: .page-head button:has(.icon-save)
+  note: 也可用 role=button name=保存；功能层可覆盖
+
+cancelBtn:
+  role: button
+  name: 取消
+
+successToast:
+  text: 成功
+
+detailLink:
+  css: .c7n-pro-table-tbody td a
+  note: 列表行链接；业务层可覆盖为具体 data-index；点击时用 exactText
+
+copyBtn:
+  role: button
+  name: 复制
+
+siteAssignmentBtn:
+  role: button
+  name: 站点分配
+  note: 详情页头；须先进详情
+
+extendAttrBtn:
+  role: button
+  name: 扩展属性
+
+# Choerodon Pro Modal Drawer：容器常驻，用 active 判断打开（勿用 role=dialog）
+drawer:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer.c7n-pro-modal-active
+  note: 未打开时仅有 modal-container + mask[hidden]
+
+drawerTitle:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-title
+
+drawerConfirm:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-primary
+
+drawerCancel:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-default
+
+copyDrawer:
+  css: '.c7n-pro-modal-wrapper.c7n-pro-modal-drawer.c7n-pro-modal-active:has(.c7n-pro-modal-title:text-is("复制"))'
+  note: 功能层可覆盖标题；字段用 input[name]
+
+lovDialog:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active
+  note: 打开态 modal；禁止逗号并集
+
+lovConfirm:
+  role: button
+  name: 确定
+
+# ---------- 表格行编辑模式（Table editor + 增删行）----------
+# 典型：页头点「编辑」后 canEdit=true；表头加号增行、行内 Lov/Switch、行首删除 + Popconfirm
+# 与页头「新建」createBtn 不同；与只读页 row_action（Radio 直调 API）也不同
+# 详见 knowledge/playbooks/choerodon-table-row-edit.md
+
+tableAddLineBtn:
+  css: .c7n-pro-table thead button:has(.icon-add)
+  note: 表头加号；若 within 已指向某表，改用相对选择器 thead button:has(.icon-add)
+
+tableRemoveLineBtn:
+  css: .c7n-pro-table-tbody tr.c7n-pro-table-row button:has(.icon-remove)
+  note: 行首删除；within 表根时用 tbody tr.c7n-pro-table-row button:has(.icon-remove)
+
+tableDeletePopover:
+  css: .c7n-popover .c7n-popover-inner-content
+  note: 文案常为「是否删除此条记录？」
+
+tableDeleteConfirm:
+  css: .c7n-popover .c7n-popover-buttons .c7n-btn-primary
+  note: Popconfirm 确定
+
+tableDeleteCancel:
+  css: .c7n-popover .c7n-popover-buttons .c7n-btn:not(.c7n-btn-primary)
+  note: Popconfirm 取消
+
+tableEditableRequiredCell:
+  css: .c7n-pro-table-cell-inner-editable.c7n-pro-table-cell-inner-required
+  note: 行内可编辑必填格（展示层）；点此激活 TableEditor，此时通常还没有 icon-search
+
+tableEmptyRow:
+  css: .c7n-pro-table-empty-row
+  note: 空表占位行；增行后变为 .c7n-pro-table-row
+
+# 行内 Lov：点格激活后，编辑器浮层上的搜索图标（勿写在 td 内）
+# 详见 playbooks/choerodon-table-row-edit.md「行内 Lov 展示方式」
+tableLovOpen:
+  css: .c7n-pro-select-wrapper:has(input.c7n-pro-input) .icon-search
+  note: 须先 click 可编辑格；功能层建议 :has(input[name=具体字段])
+
+# 行内操作列：无 href 的 <a onClick>（勿用 role=link）
+tableActionLink:
+  css: .action-link a
+  note: 见 playbooks/choerodon-table-row-edit.md「行内操作列」

@@ -1,0 +1,46 @@
+order:
+  pageReady:
+    testId: order-page-ready
+  table:
+    testId: order-table
+  tableSpin:
+    testId: order-table-spin
+  search_订单号:
+    label: 订单号
+  searchBtn:
+    role: button
+    name: 查询
+  createBtn:
+    role: button
+    name: 新建
+  formReady:
+    testId: order-form-ready
+  nameInput:
+    label: 订单名称
+  customerField:
+    label: 客户
+  submitBtn:
+    role: button
+    name: 提交
+  successToast:
+    testId: success-toast
+  pickerOpen:
+    role: button
+    name: 选择客户
+  pickerDialog:
+    testId: customer-picker-modal
+  pickerSearch:
+    placeholder: 搜索客户
+  pickerConfirm:
+    role: button
+    name: 确定
+    within: order.pickerDialog
+
+auth:
+  username:
+    label: 用户名
+  password:
+    label: 密码
+  submit:
+    role: button
+    name: 登录

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>登录</title>
+  <style>
+    body { font-family: sans-serif; max-width: 360px; margin: 80px auto; }
+    label { display: block; margin: 12px 0 4px; }
+    input { width: 100%; padding: 8px; box-sizing: border-box; }
+    button { margin-top: 16px; width: 100%; padding: 10px; }
+  </style>
+</head>
+<body>
+  <h1>登录</h1>
+  <label for="user">用户名</label>
+  <input id="user" />
+  <label for="pass">密码</label>
+  <input id="pass" type="password" />
+  <button id="loginBtn">登录</button>
+  <script>
+    document.getElementById('loginBtn').onclick = () => {
+      const u = document.getElementById('user').value;
+      const p = document.getElementById('pass').value;
+      if (u === 'demo' && p === 'demo123') {
+        localStorage.setItem('demo_token', 'ok');
+        location.href = '/home.html';
+      } else {
+        alert('账号 demo / 密码 demo123');
+      }
+    };
+  </script>
+</body>
+</html>
