@@ -8,13 +8,14 @@ knowledge/features/*
 !knowledge/features/_example/
 !knowledge/features/_example/**
 
-# 分析草稿与探针
+# 分析草稿与探针（按功能分目录 artifacts/<slug>/）
 artifacts/*
 !artifacts/.gitkeep
 
-# 可重建编译物与报告
+# 可重建编译物与报告（按功能分目录）
 cases/generated/*
 !cases/generated/.gitkeep
+elements/*/generated.yaml
 elements/*.generated.yaml
 reports/*
 !reports/.gitkeep

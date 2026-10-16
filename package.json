@@ -2,7 +2,7 @@
   "name": "web-auto-test",
   "version": "0.1.0",
   "private": true,
-  "description": "组件知识 + meta_ops/flows → Playwright 配置驱动执行",
+  "description": "组件知识 + artifacts 路径描述 → LLM suite → Playwright 配置驱动执行",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",

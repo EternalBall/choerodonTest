@@ -46,12 +46,25 @@ export function interpolateEnv<T>(input: T): T {
 export async function loadElementLibrary(
   dir = PATHS.elements,
 ): Promise<Record<string, Record<string, unknown>>> {
-  const files = await fs.readdir(dir).catch(() => [] as string[]);
   const lib: Record<string, Record<string, unknown>> = {};
-  for (const f of files) {
-    if (!f.endsWith('.yaml') && !f.endsWith('.yml')) continue;
-    const data = await readYamlFile<Record<string, Record<string, unknown>>>(path.join(dir, f));
+  for (const file of await listYamlFilesRecursive(dir)) {
+    const data = await readYamlFile<Record<string, Record<string, unknown>>>(file);
     Object.assign(lib, data);
   }
   return lib;
+}
+
+/** 收集目录下全部 yaml（含 elements/<slug>/generated.yaml） */
+async function listYamlFilesRecursive(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
+  for (const ent of entries) {
+    const full = path.join(dir, ent.name);
+    if (ent.isDirectory()) {
+      out.push(...(await listYamlFilesRecursive(full)));
+    } else if (ent.isFile() && /\.ya?ml$/i.test(ent.name)) {
+      out.push(full);
+    }
+  }
+  return out;
 }

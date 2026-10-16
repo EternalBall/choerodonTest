@@ -365,7 +365,6 @@ export const ReviewSuggestionsSchema = z.object({
     .enum(['pending_human_review', 'confirmed', 'rejected'])
     .default('pending_human_review'),
   confidence: z.number().min(0).max(1).optional(),
-  gaps: z.array(z.string()).optional().describe('分析不确定或源码证据不足'),
   risks: z.array(z.string()).optional().describe('自动化执行风险'),
   extend_paths: z.array(ReviewSuggestionItemSchema).optional().describe('建议扩展路径'),
   assert_checklist: z.array(z.string()).optional().describe('人工确认清单'),
@@ -384,7 +383,7 @@ export const FeatureArtifactSchema = z.object({
   /** 页面间跳转关系 */
   page_edges: z.array(PageEdgeSchema).optional(),
   operations: z.array(OperationSchema).min(1),
-  /** 可编排元操作（缺省由 defaultFlows 从 operations 生成） */
+  /** 可编排元操作 */
   meta_ops: z.array(MetaOpSchema).optional(),
   /** 测试流程；gen 只从 flows 出用例 */
   flows: z.array(FlowSchema).optional(),

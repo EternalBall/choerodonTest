@@ -3,13 +3,20 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { Command } from 'commander';
 import dotenv from 'dotenv';
-import { featureToSuite, writeFeatureElementsStub, writeGeneratedSuite } from '../codegen/genCase.js';
-import { loadEnvConfig, writeYamlFile } from '../core/config.js';
+import {
+  analyzeFeatureFromSource,
+  runGenPipeline,
+} from '../codegen/genCase.js';
+import { loadEnvConfig } from '../core/config.js';
+import {
+  featureArtifactFile,
+  featureOutputSlug,
+  resolveFeatureArtifactFile,
+  slugFromArtifactInputPath,
+} from '../core/featurePaths.js';
 import { logger } from '../core/logger.js';
 import { PATHS } from '../core/paths.js';
 import { listActions } from '../keywords/index.js';
-import { analyzeFeature } from '../analyzer/analyzeFeature.js';
-import { featureSlug } from '../knowledge/featureSlug.js';
 import { loadKnowledgeFeature } from '../knowledge/loadFeature.js';
 import { FeatureArtifactSchema } from '../core/schema.js';
 
@@ -25,6 +32,7 @@ async function ensureDirs() {
     PATHS.cases,
     PATHS.knowledge,
     PATHS.platformKnowledge,
+    PATHS.playbooks,
   ]) {
     await fs.mkdir(d, { recursive: true });
   }
@@ -43,15 +51,11 @@ function runPlaywright(args: string[]): Promise<number> {
   });
 }
 
-function resolveArtifactPath(feature: string): string {
-  return path.join(PATHS.artifacts, `${featureSlug(feature)}.feature.yaml`);
-}
-
 const program = new Command();
 
 program
   .name('ata')
-  .description('Kit + meta_ops/flows → 用例 YAML → Playwright 执行')
+  .description('gen：元操作 + 测试脚本；test：Playwright 执行')
   .version('0.1.0');
 
 program
@@ -61,95 +65,132 @@ program
     console.log(listActions().join('\n'));
   });
 
+function printArtifactSummary(artifact: import('../core/schema.js').FeatureArtifact) {
+  console.log(
+    `  引擎: ${artifact.analyzer || 'deepseek'}${artifact.model ? ` (${artifact.model})` : ''}`,
+  );
+  console.log(`  操作: ${artifact.operations.map((o) => o.name).join('、')}`);
+  console.log(`  入口: ${artifact.entry.route}`);
+  if (artifact.meta_ops?.length) {
+    console.log(`  元操作: ${artifact.meta_ops.length} 条`);
+  }
+  if (artifact.flows?.length) {
+    console.log(`  flows: ${artifact.flows.length} 条`);
+  }
+  console.log(`  置信度: ${artifact.confidence}`);
+}
+
 program
   .command('analyze')
-  .description('从功能源码目录经 DeepSeek LLM 分析并生成路径描述（写入 artifacts；无启发式兜底）')
+  .description('已合并到 gen；仅写出元操作文件（等同 gen -f -p --meta-only）')
   .requiredOption('-f, --feature <name>', '功能名，如 Material / 物料维护')
   .option('-p, --project <path>', '被测前端源码根目录', process.env.TARGET_PROJECT || '.')
   .action(async (opts: { feature: string; project: string }) => {
     await ensureDirs();
-    const artifact = await analyzeFeature({
-      feature: opts.feature,
-      projectRoot: opts.project,
+    console.warn('\n提示: analyze 已合并到 gen，推荐: pnpm ata gen -f ... -p ...\n');
+    const outputSlug = featureOutputSlug(opts.feature);
+    const artifact = await analyzeFeatureFromSource(opts.feature, opts.project);
+    const result = await runGenPipeline({
+      artifact,
+      outputSlug,
+      writeArtifact: true,
+      metaOnly: true,
     });
-    const out = resolveArtifactPath(opts.feature);
-    await writeYamlFile(out, artifact);
-    logger.info(
-      {
-        out,
-        analyzer: artifact.analyzer,
-        operations: artifact.operations.map((o) => o.name),
-        confidence: artifact.confidence,
-      },
-      '分析产物已写入',
-    );
-    console.log(`\n✓ 分析完成: ${out}`);
-    console.log(
-      `  引擎: ${artifact.analyzer || 'deepseek'}${artifact.model ? ` (${artifact.model})` : ''}`,
-    );
-    console.log(`  操作: ${artifact.operations.map((o) => o.name).join('、')}`);
-    console.log(`  入口: ${artifact.entry.route}`);
-    if (artifact.page_states?.length) {
-      console.log(
-        `  页面状态: ${artifact.page_states.map((s) => `${s.id}(${s.mode})`).join('、')}`,
-      );
-    }
-    if (artifact.field_rules?.length) {
-      const req = artifact.field_rules.filter((f) => f.required).map((f) => f.label || f.name);
-      console.log(`  必填字段: ${req.join('、') || '(无)'}`);
-    }
-    if (artifact.validations?.length) {
-      console.log(`  校验: ${artifact.validations.map((v) => v.name).join('、')}`);
-    }
-    if (artifact.review_suggestions) {
-      const rs = artifact.review_suggestions;
-      console.log(
-        `  审核建议: gaps=${rs.gaps?.length ?? 0} risks=${rs.risks?.length ?? 0} extend=${rs.extend_paths?.length ?? 0}`,
-      );
-    }
-    console.log(`  置信度: ${artifact.confidence}`);
+    const out = result.artifactFile ?? featureArtifactFile(opts.feature);
+    console.log(`\n✓ 元操作: ${out}`);
+    printArtifactSummary(artifact);
     console.log(`  下一步: pnpm ata gen -f ${opts.feature}  或  pnpm ata gen -i ${out}`);
   });
 
 program
   .command('gen')
-  .description('从 feature.yaml（meta_ops + flows）生成 suite YAML 与 elements（合并 platform kit）')
-  .option('-i, --input <file>', 'feature.yaml 路径')
-  .option('-f, --feature <name>', '从 knowledge/features/<slug>/feature.yaml 读取')
-  .option('--from-knowledge', '与 -f 同义，强制 knowledge')
-  .action(async (opts: { input?: string; feature?: string; fromKnowledge?: boolean }) => {
-    await ensureDirs();
-    const { parse } = await import('yaml');
+  .description(
+    '生成：源码或已有元操作 → artifacts/feature.yaml + cases/generated/suite.yaml + elements（一步完成）',
+  )
+  .option('-f, --feature <name>', '功能名')
+  .option(
+    '-p, --project <path>',
+    '被测前端源码根；与 -f 合用则从源码分析并写出元操作，再生成测试脚本',
+    process.env.TARGET_PROJECT,
+  )
+  .option('-i, --input <file>', '已有 artifacts/<slug>/feature.yaml，仅重新生成测试脚本')
+  .option('--meta-only', '只写元操作文件，不生成 suite（需 -f 且 -p）')
+  .option('--from-knowledge', '与 -f 同义，优先 knowledge/features')
+  .action(
+    async (opts: {
+      input?: string;
+      feature?: string;
+      project?: string;
+      fromKnowledge?: boolean;
+      metaOnly?: boolean;
+    }) => {
+      await ensureDirs();
+      const { parse } = await import('yaml');
 
-    let artifact;
-    if (opts.input) {
-      artifact = FeatureArtifactSchema.parse(parse(await fs.readFile(opts.input, 'utf8')));
-    } else if (opts.feature) {
-      artifact =
-        (await loadKnowledgeFeature(opts.feature)) ||
-        FeatureArtifactSchema.parse(
-          parse(await fs.readFile(resolveArtifactPath(opts.feature), 'utf8')),
-        );
-    } else {
-      throw new Error('请提供 --input 或 --feature');
-    }
+      let artifact;
+      let outputSlug: string;
+      let writeArtifact = false;
 
-    let baseURL: string | undefined;
-    try {
-      baseURL = (await loadEnvConfig()).baseURL;
-    } catch {
-      baseURL = process.env.BASE_URL;
-    }
+      if (opts.feature && opts.project) {
+        outputSlug = featureOutputSlug(opts.feature);
+        artifact = await analyzeFeatureFromSource(opts.feature, opts.project);
+        writeArtifact = true;
+      } else if (opts.input) {
+        artifact = FeatureArtifactSchema.parse(parse(await fs.readFile(opts.input, 'utf8')));
+        outputSlug =
+          slugFromArtifactInputPath(opts.input) ?? featureOutputSlug(artifact.feature);
+      } else if (opts.feature) {
+        outputSlug = featureOutputSlug(opts.feature);
+        artifact =
+          (await loadKnowledgeFeature(opts.feature)) ||
+          FeatureArtifactSchema.parse(
+            parse(await fs.readFile(await resolveFeatureArtifactFile(opts.feature), 'utf8')),
+          );
+      } else {
+        throw new Error('请提供 (-f 与 -p) 从源码生成，或 -i / -f 读取已有元操作');
+      }
 
-    const suite = featureToSuite(artifact, baseURL);
-    const caseFile = await writeGeneratedSuite(suite, artifact.feature);
-    const elFile = await writeFeatureElementsStub(artifact.feature, artifact);
+      if (opts.metaOnly && !writeArtifact) {
+        throw new Error('--meta-only 仅在与 -f、-p 从源码分析时可用');
+      }
 
-    logger.info({ cases: suite.cases.length, caseFile, elFile }, 'gen 完成');
-    console.log(`\n✓ 用例: ${caseFile}`);
-    console.log(`✓ 元素: ${elFile}`);
-    console.log('  执行: pnpm ata test -c <suite.yaml>');
-  });
+      let baseURL: string | undefined;
+      try {
+        baseURL = (await loadEnvConfig()).baseURL;
+      } catch {
+        baseURL = process.env.BASE_URL;
+      }
+
+      const result = await runGenPipeline({
+        artifact,
+        outputSlug,
+        baseURL,
+        writeArtifact,
+        metaOnly: opts.metaOnly,
+      });
+
+      logger.info(
+        {
+          outputSlug,
+          artifactFile: result.artifactFile,
+          caseFile: result.caseFile,
+          cases: result.suite?.cases.length,
+        },
+        'gen 完成',
+      );
+
+      if (result.artifactFile) {
+        console.log(`\n✓ 元操作: ${result.artifactFile}`);
+        printArtifactSummary(result.artifact);
+      }
+      if (result.caseFile && result.suite) {
+        console.log(`✓ 测试脚本: ${result.caseFile}`);
+        if (result.elFile) console.log(`✓ 元素库: ${result.elFile}`);
+        console.log(`  cases: ${result.suite.cases.map((c) => c.id).join(', ')}`);
+        console.log(`  执行: pnpm ata test -c ${result.caseFile}`);
+      }
+    },
+  );
 
 program
   .command('test')

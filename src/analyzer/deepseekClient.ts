@@ -11,7 +11,11 @@ export type DeepSeekChatMessage = {
 
 type ChatCompletionResponse = {
   choices?: Array<{
-    message?: { content?: string | null };
+    message?: {
+      content?: string | null;
+      /** deepseek-flash / reasoner 等可能把思考写在这里 */
+      reasoning_content?: string | null;
+    };
   }>;
   error?: { message?: string };
 };
@@ -64,14 +68,28 @@ export async function deepSeekChat(opts: {
     body.response_format = { type: 'json_object' };
   }
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    const cause = err instanceof Error ? (err as Error & { cause?: unknown }).cause : undefined;
+    const detail =
+      cause instanceof Error
+        ? cause.message
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    throw new Error(
+      `无法连接 DeepSeek（${url}）: ${detail}。请检查网络/代理，以及 DEEPSEEK_BASE_URL 是否可达。`,
+    );
+  }
 
   const raw = await res.text();
   let data: ChatCompletionResponse;
@@ -86,9 +104,12 @@ export async function deepSeekChat(opts: {
     throw new Error(`DeepSeek API ${res.status}: ${msg}`);
   }
 
-  const content = data.choices?.[0]?.message?.content;
-  if (!content?.trim()) {
-    throw new Error('DeepSeek 返回空内容');
+  const message = data.choices?.[0]?.message;
+  const content = message?.content?.trim() || message?.reasoning_content?.trim() || '';
+  if (!content) {
+    throw new Error(
+      `DeepSeek 返回空内容（model=${config.model}）。可改用 DEEPSEEK_MODEL=deepseek-chat 后重试。`,
+    );
   }
 
   return { content, model: config.model };

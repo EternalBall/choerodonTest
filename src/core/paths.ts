@@ -16,6 +16,7 @@ export const PATHS = {
   artifactsDom: path.join(ROOT, 'artifacts', 'dom'),
   knowledge: path.join(ROOT, 'knowledge', 'features'),
   platformKnowledge: path.join(ROOT, 'knowledge', 'platform'),
+  playbooks: path.join(ROOT, 'knowledge', 'playbooks'),
   authDir: path.join(ROOT, 'playwright', '.auth'),
   authFile: path.join(ROOT, 'playwright', '.auth', 'user.json'),
   reports: path.join(ROOT, 'reports'),

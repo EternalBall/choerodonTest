@@ -4,8 +4,13 @@ import {
   FeatureArtifactSchema,
   type FeatureArtifact,
 } from '../core/schema.js';
+import { featureLlmRawFile } from '../core/featurePaths.js';
 import { logger } from '../core/logger.js';
-import { PATHS } from '../core/paths.js';
+import {
+  formatPlaybooksForPrompt,
+  loadPlaybooks,
+  type PlaybookDoc,
+} from '../knowledge/loadPlaybooks.js';
 import { deepSeekChat } from './deepseekClient.js';
 import { formatSnippetsForPrompt, type CodeSnippet } from './retrieve.js';
 
@@ -260,7 +265,6 @@ const JSON_SCHEMA_HINT = `{
   "review_suggestions": {
     "status": "pending_human_review",
     "confidence": 0.8,
-    "gaps": [],
     "risks": ["站点分配：已落库行无删钮、不可改站点；删行须先增行；空表增行后需选站点"],
     "extend_paths": [
       { "kind": "data_fixture", "item": "准备可进站点分配的样例物料", "why": "in_feature 页链路前置", "priority": "high" }
@@ -292,13 +296,13 @@ E. **表格行编辑模式**（页头编辑后表头 icon-add 增行、行内 Lo
    - 已落库行仅可改无行门禁的控件（常为 Switch）→ update.fields + execution_chain 含 toggle_switch；
    - Lov/删行仅未落库行 → create 用 add_line；delete 必须先 add_line 再 remove_line（禁止 table_has_rows 当删已落库行前置）；
    - field_rules 对有条件的字段写 row_gate（如 "!materialSiteId"）。
-   详见知识 playbook choerodon-table-row-edit。
+   用户消息中的 PLAYBOOK choerodon-table-row-edit 正文优先于本摘要。
 F. **接口识别（api-binding）**：
    - 从触发链抽 url 字面量：services 工厂 / useRequest / 事件内 request·fetch / DS transport；禁止按资源名猜 REST。
    - 每条会改数据的 op 写 api（字面量）+ 尽量 api_source、api_kind（custom_request|ds_transport|inline|unknown）。
-   - 未见字面量 → api 留空 + gaps，禁止编造（如勿把站点分配写成 mt-material-site/save/ui；正确常为 mt-material/save/site/ui）。
+   - 未见字面量 → api 留空，禁止编造（如勿把站点分配写成 mt-material-site/save/ui；正确常为 mt-material/save/site/ui）；不确定处写入 notes / risks。
    - operation.api 必须能在源码或 apis[] 中找到；query 与 save 分开绑。
-   详见知识 playbook api-binding。
+   用户消息中的 PLAYBOOK api-binding 正文优先于本摘要。
 
 【硬性要求】
 1. 只输出一个 JSON 对象，不要 Markdown 代码围栏，不要解释文字
@@ -312,18 +316,20 @@ F. **接口识别（api-binding）**：
      行内 a[onClick] 无 href：entry_control.kind 可为 link，但 elements_hints 须用 text/css（.action-link a），禁止 role=link
    - 禁止把设默认、行启用等标成 update
 4. 每个 operation 尽量填 page_id、scope、execution_chain
-5. apis / elements_hints 为数组；route / api 来自真实 path（字面量），禁止猜测
-6. notes 写清自动化陷阱与跨功能停止点
-7. review_suggestions.status 固定 pending_human_review
-8. assert_checklist 含：会 clickExpectApi 的 op.api 可在源码/apis 中核对
+5. apis / elements_hints 为数组；api 来自源码字面量，禁止猜测
+6. **entry.route / pages[].route 必须是前端 SPA 路由**（如 /hwms/.../list），禁止写成 /v1/... 或 services 里的 API 路径；API 只进 operation.api 与 apis[]
+7. notes 写清自动化陷阱与跨功能停止点
+8. review_suggestions.status 固定 pending_human_review
+9. assert_checklist 含：会 clickExpectApi 的 op.api 可在源码/apis 中核对；entry.route 非 API
 
 【输出示例】
 ${JSON_SCHEMA_HINT}`;
 
-/** DeepSeek Chat：`response_format: json_object` + 本地归一化 */
+/** DeepSeek Chat：`response_format: json_object` + 本地归一化；注入 playbooks */
 export async function llmAnalyzeFeature(opts: {
   feature: string;
   snippets: CodeSnippet[];
+  playbooks?: PlaybookDoc[];
 }): Promise<FeatureArtifact> {
   const codeBlock = formatSnippetsForPrompt(opts.snippets);
 
@@ -331,14 +337,25 @@ export async function llmAnalyzeFeature(opts: {
     throw new Error('没有检索到可分析的源码，请检查 -p 路径');
   }
 
-  logger.info({ files: opts.snippets.length, feature: opts.feature }, 'DeepSeek 分析开始');
+  const playbooks = opts.playbooks ?? (await loadPlaybooks());
+  if (!playbooks.length) {
+    throw new Error(
+      'knowledge/playbooks/ 下没有可用手册（*.md）。请先补全操作手册再分析（ADR 0007/0008）。',
+    );
+  }
+  const playbookBlock = formatPlaybooksForPrompt(playbooks);
+
+  logger.info(
+    { files: opts.snippets.length, playbooks: playbooks.map((p) => p.id), feature: opts.feature },
+    'DeepSeek 分析开始',
+  );
 
   const { content: text, model } = await deepSeekChat({
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `功能关键词: ${opts.feature}\n\n请分析以下源码并严格按示例 JSON 结构输出：\n\n${codeBlock}`,
+        content: `功能关键词: ${opts.feature}\n\n${playbookBlock}\n\n请结合上述 Playbooks 与下列源码，严格按示例 JSON 结构输出路径描述：\n\n${codeBlock}`,
       },
     ],
     responseFormatJson: true,
@@ -376,12 +393,11 @@ export async function llmAnalyzeFeature(opts: {
   return artifact;
 }
 
-/** @deprecated 兼容旧调用名 */
 async function saveRawLlmResponse(feature: string, text: string): Promise<void> {
   try {
-    await fs.mkdir(PATHS.artifacts, { recursive: true });
-    const slug = feature.replace(/[^\w]+/g, '_').toLowerCase() || 'feature';
-    await fs.writeFile(path.join(PATHS.artifacts, `${slug}.llm.raw.json`), text, 'utf8');
+    const file = featureLlmRawFile(feature);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, text, 'utf8');
   } catch {
     // ignore
   }
@@ -394,8 +410,15 @@ export function normalizeLlmJson(input: unknown, featureHint: string): Record<st
     string,
     unknown
   >;
+  let entryRoute = String(
+    entryRaw.route || entryRaw.path || `/${featureHint.toLowerCase()}/list`,
+  );
+  // 模型常把 services API 误写成 entry.route；前端 SPA 路由不含 /v1/
+  if (/\/v1\//i.test(entryRoute) || /qis-[\w-]+(?:\/[\w-]+)*$/i.test(entryRoute)) {
+    entryRoute = `/${featureHint.toLowerCase()}/list`;
+  }
   const entry = {
-    route: String(entryRaw.route || entryRaw.path || `/${featureHint.toLowerCase()}/list`),
+    route: entryRoute,
     menu: entryRaw.menu != null ? String(entryRaw.menu) : featureHint,
   };
 
@@ -785,7 +808,6 @@ function normalizeReviewSuggestions(
   const empty = {
     status: 'pending_human_review',
     confidence: fallbackConfidence,
-    gaps: [] as string[],
     risks: [] as string[],
     extend_paths: [] as Array<Record<string, unknown>>,
     assert_checklist: [] as string[],
@@ -794,7 +816,7 @@ function normalizeReviewSuggestions(
   if (!raw || typeof raw !== 'object') {
     return {
       ...empty,
-      gaps: ['模型未输出 review_suggestions，请人工补全 gaps/risks/extend_paths'],
+      risks: ['模型未输出 review_suggestions，请人工补全 risks/extend_paths'],
     };
   }
 
@@ -836,7 +858,6 @@ function normalizeReviewSuggestions(
       typeof o.confidence === 'number'
         ? clampConfidence(o.confidence)
         : fallbackConfidence,
-    gaps: normalizeStringArray(o.gaps) ?? [],
     risks: normalizeStringArray(o.risks) ?? [],
     extend_paths,
     assert_checklist:

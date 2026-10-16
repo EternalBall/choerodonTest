@@ -65,7 +65,14 @@ test('authenticate', async ({ page, baseURL }) => {
   const password = interpolate(env.auth?.login?.password || process.env.TEST_PASS || '');
   const loginPath = env.auth?.login?.path || '/oauth/login';
   const readyText = (env.auth?.login?.ready || '').trim();
-  const origin = (baseURL || process.env.BASE_URL || 'https://momuat.azpdl.net').replace(/\/$/, '');
+  // API / OAuth 用纯 origin；BASE_URL 若带 /workplace 等路径需剥掉
+  const rawBase = (baseURL || process.env.BASE_URL || 'https://momuat.azpdl.net').replace(/\/$/, '');
+  let origin = rawBase;
+  try {
+    origin = new URL(rawBase).origin;
+  } catch {
+    origin = rawBase.replace(/\/(workplace|oauth).*$/i, '');
+  }
 
   if (!username || !password) {
     test.skip(true, '请在 .env 配置 TEST_USER / TEST_PASS');
@@ -98,9 +105,30 @@ test('authenticate', async ({ page, baseURL }) => {
   if (readyText) {
     await expect(page.getByText(readyText)).toBeVisible({ timeout: 60_000 });
   } else {
-    await page.waitForURL((url) => !/\/oauth\/login|\/login(\?|$)/i.test(url.pathname), {
-      timeout: 60_000,
-    });
+    // HZero 常见：先落到 /oauth/login#access_token=...，再进首页；pathname 可能短时仍是 login
+    await page.waitForFunction(
+      () => {
+        const { pathname, hash, href } = window.location;
+        if (/access_token=/i.test(hash) || /access_token=/i.test(href)) return true;
+        if (!/\/oauth\/login|\/login(\?|$)/i.test(pathname)) return true;
+        try {
+          for (const k of ['access_token', 'accessToken', 'token']) {
+            const v = localStorage.getItem(k) || sessionStorage.getItem(k);
+            if (v && String(v).length > 20) return true;
+          }
+        } catch {
+          // ignore
+        }
+        return false;
+      },
+      { timeout: 60_000 },
+    );
+    // 尽量离开登录页；若已带 token 则继续后续首页/角色步骤
+    await page
+      .waitForURL((url) => !/\/oauth\/login|\/login(\?|$)/i.test(url.pathname), {
+        timeout: 15_000,
+      })
+      .catch(() => undefined);
   }
 
   // 进首页：优先等页面自己拉取 self-roles（200），直接复用结果与请求头
@@ -294,19 +322,22 @@ async function switchRoleViaApi(
 
 async function trySwitchRoleByUi(page: import('@playwright/test').Page, roleName: string): Promise<boolean> {
   try {
-    // 常见：顶栏显示当前角色，点击后弹出角色列表
-    const trigger = page
-      .locator('.header, .c7n-pro-header, [class*="Header"], [class*="user"]')
-      .getByText(/管理员|角色|租户|胖东来|平台/i)
+    // HZero：点右上角用户名展开，再选角色
+    const userTrigger = page
+      .locator('[class*="user"], [class*="User"], [class*="header"], [class*="Header"]')
+      .getByText(/测试用户|管理员|角色|租户|胖东来|平台/i)
       .first();
-    if (await trigger.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await trigger.click();
+    if (await userTrigger.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await userTrigger.click();
     } else {
-      // 直接找可点击的当前角色区域
-      await page.locator('[class*="role"], [class*="Role"]').first().click({ timeout: 3000 }).catch(() => undefined);
+      await page
+        .locator('[class*="role"], [class*="Role"], [class*="avatar"], [class*="Avatar"]')
+        .first()
+        .click({ timeout: 3000 })
+        .catch(() => undefined);
     }
 
-    const option = page.getByText(roleName, { exact: true }).first();
+    const option = page.getByText(roleName, { exact: false }).first();
     await expect(option).toBeVisible({ timeout: 10_000 });
     await option.click();
     await page.waitForTimeout(2000);

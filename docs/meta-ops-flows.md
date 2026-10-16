@@ -1,21 +1,48 @@
-# 元操作与流程编排（meta_ops / flows）
+# 端到端流程：生成 → 执行
 
-## 概念
+## 主链（两步）
 
-| 层 | 作用 |
-|----|------|
-| `operations` | 能力摘要（审核用）：查询/复制/站点分配… |
-| `meta_ops` | 可编排最小执行单元（goto / click / pick_lov…） |
-| `flows` | 测试用例 = 元操作链；**gen 只编译 flows** |
+| 步骤 | 命令 | 输入 | 输出 |
+|------|------|------|------|
+| **1. 生成** | `ata gen -f … -p …` | 被测源码 + Playbooks + Platform Kit | **元操作** `artifacts/<slug>/feature.yaml` + **测试脚本** `cases/generated/<slug>/suite.yaml` + `elements/<slug>/generated.yaml` |
+| **2. 执行** | `ata test -c …` | suite + 元素库 | `reports/html` |
 
+```text
+被测源码
+    │  ata gen -f <功能> -p <源码根>
+    │    ① LLM 分析源码 → 元操作产物
+    │    ② LLM + playbooks → suite；kit 合并 → elements
+    ▼
+artifacts/<slug>/feature.yaml
+cases/generated/<slug>/suite.yaml
+elements/<slug>/generated.yaml
+    │  ata test
+    ▼
+reports/html
 ```
-analyze → operations +（可空）meta_ops
-       → defaultFlows 补全 meta_ops + flows(source=default)
-Console 画布 → 改 flows(source=user)
-gen → 每个 flow → TC_{NS}_{FLOW_ID}
-```
 
-## MetaOp kind
+若已有元操作文件，可只重做测试脚本：`pnpm ata gen -i artifacts/<slug>/feature.yaml`。
+
+`ata analyze` 已合并进 `gen`（等同 `gen -f -p --meta-only`，仅写元操作）。
+
+## 概念分层
+
+| 层 | 作用 | 典型落盘 |
+|----|------|----------|
+| `operations` | 能力摘要（审核） | `feature.yaml` |
+| `meta_ops` | 最小执行单元 | `feature.yaml` |
+| `flows` | 用例 = 元操作链 | `feature.yaml` |
+| suite `steps` | Playwright 关键字步骤 | `suite.yaml` |
+
+## Playbooks 与 Kit（生成阶段）
+
+| 知识 | 形态 | 作用 |
+|------|------|------|
+| **Playbooks** | `knowledge/playbooks/*.md` | 分析识别元操作；生成时 meta_op → keyword / 元素语义 |
+| **Platform Kit** | `knowledge/platform/choerodon/kit.yaml` | 合并为 `elements/.../generated.yaml` |
+| **功能覆盖** | `knowledge/features/<slug>/elements.yaml` | 可选 curated 定位 |
+
+## MetaOp kind → keyword
 
 | kind | keyword |
 |------|---------|
@@ -27,22 +54,31 @@ gen → 每个 flow → TC_{NS}_{FLOW_ID}
 | fill / fill_form | fill / fillForm |
 | pick_lov | pickLov |
 | click_expect_api | clickExpectApi |
-| assert | assert（步骤级 assert） |
+| assert | assert |
 | set_var | setVar |
 
-## 默认 flows
+## CLI
 
-`src/codegen/defaultFlows.ts` 按 `operations` 类型生成；**flow.id = operation.id**，保证用例 ID 稳定（如 `TC_…_SITE_ASSIGNMENT_UPDATE`）。
+```bash
+# 一步：元操作 + 测试脚本 + 元素库（须 DEEPSEEK_API_KEY）
+pnpm ata gen -f <功能名> -p <被测前端源码根>
 
-- `source: default`：规则生成，可被 gen/solidify 刷新（同 id 且无 user 覆盖时）
-- `source: user`：画布保存后不再被默认规则覆盖
+# 仅根据已有元操作重新生成脚本
+pnpm ata gen -i artifacts/<slug>/feature.yaml
 
-## 画布约定
+# 执行
+pnpm ata auth
+pnpm ata test -c cases/generated/<slug>/suite.yaml
+pnpm report
+```
 
-- 一期单主链：恰好一个入度 0 的起点
-- 节点 `position` 落盘便于重开
-- 保存 API：`PUT /api/features/:id/flows`
+排障：`artifacts/<slug>/llm.raw.json`（分析）、`gen.llm.raw.json`（生成 suite）。
 
-## gen
+## 实现
 
-`featureToSuite` → `ensureMetaOpsAndFlows` → `compileFlowToSteps`。无 flows 的旧产物会自动补默认。
+- `codegen/runGenPipeline`：`analyzeFeatureFromSource`（可选写 artifact）→ `llmGenSuite` → `writeGeneratedSuite` / `writeFeatureElementsStub`
+- `cli/index.ts`：`gen` 统一入口；`analyze` 为 `--meta-only` 兼容别名
+
+## 遗留
+
+- `defaultFlows.ts` / `compileFlow.ts`：当前 `gen` 不使用。

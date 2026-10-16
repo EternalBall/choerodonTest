@@ -11,7 +11,7 @@
 ## DOM 探针 + 人工审核
 
 ```bash
-pnpm exec tsx src/cli/index.ts probe-dom -f "<功能名>" -i artifacts/<slug>.feature.yaml
+pnpm exec tsx src/cli/index.ts probe-dom -f "<功能名>" -i artifacts/<slug>/feature.yaml
 # 在功能产物目录编辑 review.yaml：候选 status → approved / rejected
 pnpm exec tsx src/cli/index.ts confirm -f "<功能名>" --apply-dom
 ```
@@ -19,4 +19,4 @@ pnpm exec tsx src/cli/index.ts confirm -f "<功能名>" --apply-dom
 - 探针写 `artifacts/dom/` + 功能侧 `REVIEW.md` / `review.yaml`，**默认不写 kit**
 - `confirm --apply-dom` 仅合并 `approved` 进 `kit.yaml`，默认不覆盖已有 key（`--force-dom` 才覆盖）
 
-业务字段定位写在**功能产物**的 `elements.yaml`，不要只改 `elements/*.generated.yaml`（下次 gen 会重建）。
+业务字段定位写在**功能产物**的 `elements.yaml`，不要只改 `elements/<slug>/generated.yaml`（下次 gen 会重建）。

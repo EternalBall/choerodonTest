@@ -1,6 +1,6 @@
 # 操作手册（Playbooks）
 
-**组件知识**：Choerodon / HZero 上「某类 UI 怎么操作、怎么从源码认 API」，供分析引擎（未来检索注入）与人工参阅。
+**组件知识**：Choerodon / HZero 上「某类 UI 怎么操作、怎么从源码认 API」，供 **分析**（识别元操作）与 **生成**（元操作 → suite 时定位与 keyword 转换）注入 LLM，并供人工参阅。
 
 **不包含**：功能路径描述、`meta_ops`/`flows` 编排、截图报告约定（见 [docs/meta-ops-flows.md](../../docs/meta-ops-flows.md)、[docs/screenshot.md](../../docs/screenshot.md)）。
 
@@ -15,4 +15,5 @@
 | [row-action.md](./row-action.md) | 行内动作（Radio/Switch 等，非页头保存） |
 | [api-binding.md](./api-binding.md) | 从源码抽取 API 字面量 |
 
-引擎运行时当前**只读** `platform/choerodon/kit.yaml`；playbook 正文在分析阶段引用（迁入引擎后应实现目录加载，见 ADR 0007）。
+- **运行时定位**：`platform/choerodon/kit.yaml`（`platformKit` 合并进用例元素）
+- **分析阶段**：`ata analyze` 经 `loadPlaybooks()` 加载本目录全部 `*.md`（除 README），注入 DeepSeek 提示词；目录为空则分析失败（ADR 0007/0008）
