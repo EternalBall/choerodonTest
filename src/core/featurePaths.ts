@@ -9,7 +9,7 @@ import {
 import { PATHS } from './paths.js';
 
 /**
- * 元素命名空间 / 稳定功能键（不含时间戳）。
+ * 元素命名空间 / 稳定功能键。
  * 产物目录请用 `toArtifactDirName` / `resolveOutputSlugForFeature`。
  */
 export function featureOutputSlug(feature: string): string {
@@ -17,8 +17,8 @@ export function featureOutputSlug(feature: string): string {
 }
 
 /**
- * 产物目录名：已是 run slug（含时间戳）则原样使用，避免二次 slugify 破坏 `-`；
- * 否则按功能名得到稳定 base slug（兼容旧无时间戳目录）。
+ * 产物目录名：已是历史带时间戳的 run slug 则原样使用（读取兼容）；
+ * 否则按功能名得到稳定 slug。
  */
 export function toArtifactDirName(featureOrSlug: string): string {
   if (isRunOutputSlug(featureOrSlug)) return featureOrSlug;
@@ -60,8 +60,8 @@ function legacyArtifactFile(featureOrSlug: string): string {
 }
 
 /**
- * 列出某功能在 artifacts 下的产物目录（含旧无时间戳目录与 `base_timestamp`）。
- * 按时间戳新→旧；无时间戳的旧目录排在最后。
+ * 列出某功能在 artifacts 下的产物目录（稳定 slug + 历史 `base_timestamp`）。
+ * 稳定 slug 优先；历史带时间戳目录按时间戳新→旧。
  */
 export async function listOutputSlugsForFeature(feature: string): Promise<string[]> {
   const base = featureSlug(feature);
@@ -85,6 +85,8 @@ export async function listOutputSlugsForFeature(feature: string): Promise<string
   }
 
   matches.sort((a, b) => {
+    if (a === base && b !== base) return -1;
+    if (b === base && a !== base) return 1;
     const ta = isRunOutputSlug(a) ? a.slice(base.length + 1) : '';
     const tb = isRunOutputSlug(b) ? b.slice(base.length + 1) : '';
     return tb.localeCompare(ta);
@@ -107,10 +109,10 @@ export async function findLatestOutputSlug(feature: string): Promise<string | un
 }
 
 /**
- * 解析 gen 落盘目录：已有则复用最新（保留 compare/v1）；否则新建 `base_timestamp`。
+ * 解析 gen 落盘目录：始终为功能 slug（无时间戳；同功能再次 gen 覆盖同目录）。
  */
 export async function resolveOutputSlugForFeature(feature: string): Promise<string> {
-  return (await findLatestOutputSlug(feature)) ?? makeRunOutputSlug(feature);
+  return featureSlug(feature);
 }
 
 /**
@@ -217,7 +219,7 @@ export async function resolveFeatureContext(input: string): Promise<FeatureConte
     // not a feature directory
   }
 
-  // 已是带时间戳的产物目录名 → 精确定位
+  // 已是历史带时间戳的产物目录名 → 精确定位
   if (isRunOutputSlug(trimmed)) {
     const featureDir = featureArtifactDir(trimmed);
     return {
@@ -227,7 +229,7 @@ export async function resolveFeatureContext(input: string): Promise<FeatureConte
     };
   }
 
-  // 功能名或 base slug → 该功能最新产物目录（含时间戳优先）
+  // 功能名或 slug → 该功能产物目录（稳定 slug 优先，其次历史带时间戳）
   const latest = await findLatestOutputSlug(trimmed);
   const slug = latest ?? featureSlug(trimmed);
   const featureDir = featureArtifactDir(slug);

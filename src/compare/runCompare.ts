@@ -11,10 +11,10 @@ import { FeatureArtifactSchema, SuiteSchema } from '../core/schema.js';
 import { buildDiffYaml } from './buildDiffYaml.js';
 import { diffFeatureArtifacts } from './diffArtifact.js';
 import { diffSuites } from './diffSuite.js';
-import { fallbackReportFromDiff, llmSummarizeDiff } from './llmSummarizeDiff.js';
+import { llmSummarizeDiff } from './llmSummarizeDiff.js';
 import { featureCompareDir } from './paths.js';
+import { artifactLogicChanged } from './diffArtifact.js';
 import { renderReportMarkdown } from './renderReportMarkdown.js';
-import { artifactLogicChanged } from './renderChangeNarrative.js';
 import {
   baselineFeatureFile,
   baselineSuiteFile,
@@ -25,7 +25,6 @@ import {
 export async function runCompare(opts: {
   feature: string;
   baselineLabel?: string;
-  skipLlm?: boolean;
 }): Promise<{
   diffFile: string;
   latestDiffFile: string;
@@ -110,29 +109,8 @@ export async function runCompare(opts: {
   await writeYamlFile(diffFile, diffDoc);
   await writeYamlFile(latestDiffFile, diffDoc);
 
-  let report;
-  let llmRaw: string | undefined;
-  if (opts.skipLlm) {
-    report = fallbackReportFromDiff(diffDoc);
-  } else {
-    try {
-      const llm = await llmSummarizeDiff(diffDoc);
-      report = llm.report;
-      llmRaw = llm.raw;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('DEEPSEEK_API_KEY') || msg.includes('缺少')) {
-        report = fallbackReportFromDiff(diffDoc);
-        report.risks = [...report.risks, '未配置 LLM，报告为规则兜底；配置 DEEPSEEK_API_KEY 后可生成完整叙述'];
-      } else {
-        throw err;
-      }
-    }
-  }
-
-  if (llmRaw) {
-    await fs.writeFile(path.join(compareDir, 'report.llm.raw.json'), llmRaw, 'utf8');
-  }
+  const { report, raw: llmRaw } = await llmSummarizeDiff(diffDoc);
+  await fs.writeFile(path.join(compareDir, 'report.llm.raw.json'), llmRaw, 'utf8');
 
   const reportFile = path.join(compareDir, `report-${stamp}.yaml`);
   const latestReportFile = path.join(compareDir, 'latest-report.yaml');

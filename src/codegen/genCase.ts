@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import YAML from 'yaml';
 import { analyzeFeature } from '../analyzer/analyzeFeature.js';
+import { ensureCompiledFlows } from '../analyzer/compileFlows.js';
 import { writeYamlFile } from '../core/config.js';
 import {
   featureArtifactFile,
@@ -83,13 +84,25 @@ export async function runGenPipeline(opts: {
   /** 仅写元操作文件，不生成 suite（兼容旧 analyze） */
   metaOnly?: boolean;
 }): Promise<GenPipelineResult> {
-  const { artifact, outputSlug, baseURL, writeArtifact, metaOnly } = opts;
+  const { outputSlug, baseURL, metaOnly } = opts;
+  const hadFlows = !!(opts.artifact.flows?.length && opts.artifact.meta_ops?.length);
+  // 旧产物无 flows 时升级编译；已有编排则保留
+  const artifact = ensureCompiledFlows(opts.artifact);
+  const upgradedFlows = !hadFlows && !!(artifact.flows?.length && artifact.meta_ops?.length);
   let artifactFile: string | undefined;
 
-  if (writeArtifact) {
+  if (opts.writeArtifact || upgradedFlows) {
     artifactFile = featureArtifactFile(outputSlug);
     await writeYamlFile(artifactFile, artifact);
-    logger.info({ artifactFile }, '已写入元操作产物');
+    logger.info(
+      {
+        artifactFile,
+        meta_ops: artifact.meta_ops?.length ?? 0,
+        flows: artifact.flows?.length ?? 0,
+        upgradedFlows,
+      },
+      '已写入元操作产物',
+    );
   }
 
   if (metaOnly) {

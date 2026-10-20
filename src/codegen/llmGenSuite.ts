@@ -39,7 +39,7 @@ const SUITE_JSON_HINT = `{
             "mode": "filterBar",
             "resetFirst": true,
             "fields": [
-              { "name": "fieldType", "label": "类型", "value": "\${ENV.ATA_SAMPLE}" }
+              { "name": "fieldType", "label": "类型", "control": "select", "first": true }
             ]
           },
           "ready": { "hidden": "feat_e997aee9.tableSpin" },
@@ -76,7 +76,7 @@ const SUITE_JSON_HINT = `{
 }`;
 
 function buildSystemPrompt(allowedActions: string[], ns: string): string {
-  return `你是 UI 自动化测试用例生成助手。根据功能路径描述（artifacts 中的 feature.yaml：operations / meta_ops / flows 等）生成可执行的 Playwright 配置驱动 suite JSON。
+  return `你是 UI 自动化测试用例生成助手。根据功能路径描述（artifacts 中的 feature.yaml：优先 meta_ops + flows；否则 operations）生成可执行的 Playwright 配置驱动 suite JSON。
 
 【硬性要求】
 1. 只输出一个 JSON 对象，不要 Markdown 代码围栏，不要解释文字
@@ -88,9 +88,14 @@ function buildSystemPrompt(allowedActions: string[], ns: string): string {
 6. 元素引用使用命名空间前缀（如 ${ns}.pageReady / ${ns}.saveBtn），与 elements 库 key 对齐；禁止编造未声明的 CSS 选择器作为 target
 7. 改数据步骤优先用 clickExpectApi，urlIncludes / successUrlIncludes 必须来自输入中的 operation.api / apis[] 字面量片段，禁止猜测 REST 路径
 8. 每个 operation（或每条 flow）至少对应一条 case；case.id 形如 TC_{NS}_{OP_ID}，OP_ID 用 operation.id / flow.id 大写蛇形
-9. 查询类用 tableFilterQuery（filterBar）；进详情用 openDetailRow；Lov 用 pickLov；填表用 fill / fillForm
+9. 查询类用 tableFilterQuery（filterBar）；进详情用 openDetailRow；Lov 用 pickLov；Select/快码用 pickSelect；填表用 fill / fillForm
 10. screenshot 默认 true；ready 用 visible/hidden 元素引用
-11. 变量可用 \${ENV.ATA_SAMPLE}、\${ENV.ATA_RUN_ID}、\${vars.xxx}
+11. **样本数据（重要）**：
+    - Select / Lookup：tableFilterQuery 字段写 \`control: "select", first: true\`（不要 value）；或步骤用 pickSelect（name + first:true）
+    - Lov：\`control: "lov", first: true\` 或 pickLov（默认第一行）
+    - 自由文本才写 value；可用 \${ENV.ATA_SAMPLE} / \${ENV.ATA_RUN_ID} / \${vars.xxx}
+    - **禁止**对 Select 字段 fill 环境变量字符串
+    - 查询可选文本条件无样本时可省略该字段，只保留必填 Select/Lov
 12. 若输入含 meta_ops + flows：严格按 flows 节点顺序编排 steps，把 meta_op.kind 映射为上表 action
 13. 若仅有 operations：按 execution_chain / preconditions / type 推导最短可执行链路
 

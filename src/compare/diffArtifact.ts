@@ -2,6 +2,7 @@ import type { FeatureArtifact, Flow, MetaOp } from '../core/schema.js';
 import { OperationSchema } from '../core/schema.js';
 import type { z } from 'zod';
 import { deepEqual } from './deepEqual.js';
+import { diffFlowChains, type FlowChainDiff } from './resolveFlow.js';
 
 type Operation = z.infer<typeof OperationSchema>;
 
@@ -16,6 +17,8 @@ export type ArtifactDiff = {
   operations: IdDiff<Operation>;
   meta_ops: IdDiff<MetaOp>;
   flows: IdDiff<Flow> & { sequenceChanged: { id: string; before: string[]; after: string[] }[] };
+  /** 完整流程链比对（主轴） */
+  flow_chains: FlowChainDiff[];
   page_states: { changed: boolean; detail?: string };
   field_rules: { changed: boolean; detail?: string };
   validations: { changed: boolean; detail?: string };
@@ -73,31 +76,6 @@ function diffById<T extends { id: string }>(
   return { added, removed, changed, unchanged };
 }
 
-function flowNodeSequence(flow: Flow): string[] {
-  if (!flow.edges?.length) {
-    return flow.nodes.map((n) => n.meta_op_id);
-  }
-  const out: string[] = [];
-  const byId = new Map(flow.nodes.map((n) => [n.id, n]));
-  const targets = new Set(flow.edges.map((e) => e.target));
-  let start: string | undefined =
-    flow.nodes.find((n) => !targets.has(n.id))?.id ?? flow.nodes[0]?.id;
-  const seen = new Set<string>();
-  while (start && !seen.has(start)) {
-    seen.add(start);
-    const node = byId.get(start);
-    if (node) out.push(node.meta_op_id);
-    const edge = flow.edges.find((e) => e.source === start);
-    start = edge?.target;
-  }
-  if (out.length < flow.nodes.length) {
-    for (const n of flow.nodes) {
-      if (!out.includes(n.meta_op_id)) out.push(n.meta_op_id);
-    }
-  }
-  return out;
-}
-
 export function diffFeatureArtifacts(before: FeatureArtifact, after: FeatureArtifact): ArtifactDiff {
   const operations = diffById(before.operations, after.operations, (op) => {
     const pick: Record<string, unknown> = {};
@@ -108,23 +86,17 @@ export function diffFeatureArtifacts(before: FeatureArtifact, after: FeatureArti
   });
 
   const meta_ops = diffById(before.meta_ops, after.meta_ops);
+  const flow_chains = diffFlowChains(before, after);
 
   const flowsBase = diffById(before.flows, after.flows);
   const sequenceChanged: ArtifactDiff['flows']['sequenceChanged'] = [];
-  for (const id of flowsBase.unchanged) {
-    const fA = before.flows?.find((f) => f.id === id);
-    const fB = after.flows?.find((f) => f.id === id);
-    if (!fA || !fB) continue;
-    const seqA = flowNodeSequence(fA);
-    const seqB = flowNodeSequence(fB);
-    if (!deepEqual(seqA, seqB)) sequenceChanged.push({ id, before: seqA, after: seqB });
-  }
-  for (const c of flowsBase.changed) {
-    sequenceChanged.push({
-      id: c.id,
-      before: flowNodeSequence(c.before),
-      after: flowNodeSequence(c.after),
-    });
+  for (const chain of flow_chains) {
+    if (chain.change_type === 'unchanged') continue;
+    const seqA = chain.before.map((s) => s.meta_op_id);
+    const seqB = chain.after.map((s) => s.meta_op_id);
+    if (!deepEqual(seqA, seqB)) {
+      sequenceChanged.push({ id: chain.id, before: seqA, after: seqB });
+    }
   }
 
   const flows = { ...flowsBase, sequenceChanged };
@@ -133,6 +105,7 @@ export function diffFeatureArtifacts(before: FeatureArtifact, after: FeatureArti
     operations,
     meta_ops,
     flows,
+    flow_chains,
     page_states: {
       changed: !deepEqual(before.page_states, after.page_states),
     },
@@ -146,4 +119,24 @@ export function diffFeatureArtifacts(before: FeatureArtifact, after: FeatureArti
       changed: !deepEqual(before.entry, after.entry),
     },
   };
+}
+
+/** 路径逻辑是否变更：以完整流程链为主，辅以能力/配套模型 */
+export function artifactLogicChanged(diff: ArtifactDiff): boolean {
+  if (diff.flow_chains.some((c) => c.change_type !== 'unchanged')) return true;
+  if (diff.operations.added.length || diff.operations.removed.length || diff.operations.changed.length) {
+    return true;
+  }
+  if (diff.meta_ops.added.length || diff.meta_ops.removed.length || diff.meta_ops.changed.length) {
+    return true;
+  }
+  if (
+    diff.entry.changed ||
+    diff.page_states.changed ||
+    diff.field_rules.changed ||
+    diff.validations.changed
+  ) {
+    return true;
+  }
+  return false;
 }

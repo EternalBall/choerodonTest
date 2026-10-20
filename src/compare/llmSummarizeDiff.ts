@@ -5,31 +5,23 @@ import type { CompareDiffDocument } from './buildDiffYaml.js';
 import YAML from 'yaml';
 
 const CompareReportSchema = z.object({
-  report_version: z.literal('1'),
+  report_version: z.literal('2'),
   feature: z.string(),
   logic_changed: z.boolean(),
-  executive_summary: z.string().describe('2-4 句总览，业务语言'),
-  capabilities: z.array(
+  /** 1～2 句总览 */
+  summary: z.string(),
+  /** 仅写有变化的流程；不变的可省略 */
+  flows: z.array(
     z.object({
-      operation_id: z.string(),
-      change_type: z.enum(['added', 'removed', 'modified', 'unchanged']),
-      narrative: z.string(),
+      id: z.string(),
+      title: z.string().optional(),
+      change_type: z.enum(['added', 'removed', 'modified']),
+      /** 一句说清这条完整流程怎么变了 */
+      what_changed: z.string(),
     }),
   ),
-  meta_ops_summary: z.string().optional(),
-  flows_summary: z.string().optional(),
-  models_summary: z.string().optional().describe('入口/页面状态/字段规则/校验'),
-  suite_summary: z.string().optional().describe('编译用例层辅助说明'),
-  path_readable: z
-    .array(
-      z.object({
-        category: z.string(),
-        narrative: z.string(),
-      }),
-    )
-    .describe('步骤构成、执行顺序、触发方式、前置、校验性等'),
-  risks: z.array(z.string()),
-  reviewer_checklist: z.array(z.string()),
+  /** 可选补充，每条一行，尽量少 */
+  notes: z.array(z.string()).optional(),
 });
 
 export type CompareReportDocument = z.infer<typeof CompareReportSchema> & {
@@ -41,43 +33,60 @@ export type CompareReportDocument = z.infer<typeof CompareReportSchema> & {
 };
 
 function buildSystemPrompt(): string {
-  return `你是 UI 自动化「路径描述」评审助手。输入是一份结构化的对比差异 YAML（baseline vs current），不是源码 diff。
+  return `你是 UI 自动化「测试流程」对比报告助手。输入是基线 vs 当前的结构化 diff（主轴是完整流程链）。
 
 【任务】
-1. 用业务可读语言写对比报告，按能力（operations）组织
-2. 优先说明：步骤构成、执行顺序、触发方式、前置依赖、接口去向、必填/校验变化
-3. meta_ops / flows 有内容时说明节点级变化；无则明确写「产物未含 flows/meta_ops，仅能力层」
-4. suite 段落仅作执行脚本是否跟上的辅助，不作为唯一逻辑依据
-5. 输出单个 JSON 对象，字段严格符合用户 schema，不要 Markdown 围栏
+1. 以「完整测试流程」为单位写报告（一条 flow = 一条可执行链路），不要按零散字段堆砌
+2. summary：一两句话说清有无逻辑变更、影响几条流程
+3. flows：只列有变化的流程；what_changed 必须是一句短句（≤40 字），说清步骤增删/顺序/接口变化
+4. notes：可选，最多 2 条，一句一条
+5. 输出单个 JSON，字段严格符合 schema，不要 Markdown 围栏
 
 【禁止】
-- 不要编造 diff 中不存在的接口或步骤
-- 不要用代码符号堆砌代替业务叙述`;
+- 不要复述 before/after 整链
+- 不要编造 diff 中不存在的步骤或接口
+- 不要写评审清单、能力分节、路径类别等冗长章节`;
 }
 
 export async function llmSummarizeDiff(
   diff: CompareDiffDocument,
 ): Promise<{ report: CompareReportDocument; raw: string }> {
   const config = loadDeepSeekConfig();
-  const diffYaml = YAML.stringify(diff);
+  // 给 LLM 的精简视图：流程主轴 + highlights，避免全量 before/after 噪音
+  const forLlm = {
+    meta: {
+      feature: diff.meta.feature,
+      baseline: diff.meta.baseline_label,
+      logic_changed: diff.meta.logic_changed,
+      suite_only_drift: diff.meta.suite_only_drift,
+    },
+    flows: diff.flows
+      .filter((f) => f.change_type !== 'unchanged')
+      .map((f) => ({
+        id: f.id,
+        title: f.title,
+        change_type: f.change_type,
+        highlights: f.highlights,
+        before_chain: f.before.map((s) => `${s.meta_op_id}(${s.kind})`).join(' → '),
+        after_chain: f.after.map((s) => `${s.meta_op_id}(${s.kind})`).join(' → '),
+      })),
+    operations: diff.operations,
+    supporting: diff.supporting,
+    suite: diff.suite,
+  };
+  const diffYaml = YAML.stringify(forLlm);
 
-  const user = `【对比差异 YAML】
+  const user = `【对比差异（完整流程主轴）】
 ${diffYaml}
 
 【输出 JSON schema】
 {
-  "report_version": "1",
+  "report_version": "2",
   "feature": string,
   "logic_changed": boolean,
-  "executive_summary": string,
-  "capabilities": [{ "operation_id": string, "change_type": "added"|"removed"|"modified"|"unchanged", "narrative": string }],
-  "meta_ops_summary": string optional,
-  "flows_summary": string optional,
-  "models_summary": string optional,
-  "suite_summary": string optional,
-  "path_readable": [{ "category": string, "narrative": string }],
-  "risks": string[],
-  "reviewer_checklist": string[]
+  "summary": string,
+  "flows": [{ "id": string, "title": string optional, "change_type": "added"|"removed"|"modified", "what_changed": string }],
+  "notes": string[] optional
 }`;
 
   const { content, model } = await deepSeekChat({
@@ -109,46 +118,4 @@ ${diffYaml}
 
   logger.info({ model, feature: diff.meta.feature }, 'LLM 对比报告已生成');
   return { report, raw: content };
-}
-
-/** 无 LLM 时的结构化兜底报告 */
-export function fallbackReportFromDiff(diff: CompareDiffDocument): CompareReportDocument {
-  const caps: CompareReportDocument['capabilities'] = [];
-  for (const op of diff.path.operations.added) {
-    caps.push({ operation_id: op.id, change_type: 'added', narrative: `新增能力：${op.name}` });
-  }
-  for (const op of diff.path.operations.removed) {
-    caps.push({ operation_id: op.id, change_type: 'removed', narrative: `移除能力：${op.name}` });
-  }
-  for (const c of diff.path.operations.changed) {
-    caps.push({
-      operation_id: c.id,
-      change_type: 'modified',
-      narrative: `变更字段：${c.fields.map((f) => f.field).join(', ')}`,
-    });
-  }
-  for (const id of diff.path.operations.unchanged_ids) {
-    caps.push({ operation_id: id, change_type: 'unchanged', narrative: '无变化' });
-  }
-
-  return {
-    report_version: '1',
-    feature: diff.meta.feature,
-    logic_changed: diff.meta.logic_changed,
-    executive_summary: diff.meta.logic_changed
-      ? `相对基线 ${diff.meta.baseline_label}，路径描述存在逻辑层变更（详见 diff.yaml）。`
-      : `相对基线 ${diff.meta.baseline_label}，路径描述无逻辑变更。`,
-    capabilities: caps,
-    suite_summary: diff.suite
-      ? `用例新增 ${diff.suite.added.length}、移除 ${diff.suite.removed.length}、变更 ${diff.suite.changed.length}`
-      : undefined,
-    path_readable: [],
-    risks: [],
-    reviewer_checklist: ['请人工通读 diff.yaml 核对 execution_chain 与 api'],
-    meta: {
-      generated_at: new Date().toISOString(),
-      model: 'fallback',
-      source_diff: `compare/${diff.meta.baseline_label}`,
-    },
-  };
 }

@@ -214,7 +214,7 @@ selectTrigger:
 
 selectPopup:
   css: .c7n-pro-select-popup
-  note: 打开态下拉；选项在 .c7n-pro-select-dropdown-menu 内
+  note: 打开态下拉；选项在 .c7n-pro-select-dropdown-menu 内；关键字 pickSelect 默认 first:true 点第一项
 
 # ---------- DatePicker（前缀 calendar；见 playbooks/choerodon-date-picker.md）----------
 datePickerWrapper:

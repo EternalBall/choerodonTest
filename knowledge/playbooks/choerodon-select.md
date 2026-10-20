@@ -48,13 +48,27 @@ field_rules:
 ## 自动化步骤
 
 1. 定位：`.c7n-pro-select-wrapper:has(input[name="status"])`（或功能层 key）  
-2. `click` wrapper 或 trigger，等待 `.c7n-pro-select-popup` 可见  
-3. 在 popup 内 `getByText` / menu item 点击选项文案（或 meaning）  
-4. 断言 popup 关闭；输入框展示选中文本  
-
-可搜索：先在 popup 搜索框填关键词再点项。
+2. 关键字 **`pickSelect`**（推荐）或手工 click trigger → popup  
+3. **样本默认选第一条**：`first: true`（无业务特定值时不要写死文案）  
+4. 需要特定值时用 `option: "启用"`  
 
 ```yaml
+# 独立步骤
+- action: pickSelect
+  args:
+    name: fieldType
+    first: true
+
+# 查询条内嵌
+- action: tableFilterQuery
+  args:
+    mode: filterBar
+    fields:
+      - name: fieldType
+        label: 类型
+        control: select
+        first: true
+
 # kit
 selectPopup:
   css: .c7n-pro-select-popup
@@ -62,11 +76,14 @@ selectTrigger:
   css: .c7n-pro-select-wrapper .c7n-pro-select-trigger
 ```
 
+可搜索：先在 popup 搜索框填关键词再点项（特定 option 时）。
+
 ## 常见误判
 
 | 错误 | 正确 |
 |------|------|
-| Select 用 `pickLov` | 无 Modal 表；点下拉 option |
+| Select 用 `pickLov` | 无 Modal 表；用 `pickSelect` |
+| Select 填 `${ENV.ATA_SAMPLE}` | 用 `first: true` 点第一条 option |
 | Lov 当 Select 只点箭头 | 点 `.icon-search` → Modal |
 | 与 filterBar 同名字段冲突 | 限定 `.page-content` / form within |
 | 行内编辑格未激活就点 Select | 先点可编辑格（见 row-edit） |

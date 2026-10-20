@@ -22,13 +22,13 @@
 test-03/
 ├── knowledge/platform/     # Kit：choerodon/kit.yaml
 ├── knowledge/playbooks/    # 分析 / 生成时注入的操作手册
-├── artifacts/<base>_<timestamp>/   # 功能路径描述（本地；见下方命名规则）
+├── artifacts/<featureSlug>/   # 功能路径描述（本地；见下方命名规则）
 │   ├── feature.yaml        # current（当前工作副本）
 │   ├── v1/                 # 基线快照（snapshot 写入，勿改）
 │   ├── baseline-manifest.yaml
 │   └── compare/            # diff.yaml、report.yaml
-├── cases/generated/<base>_<timestamp>/suite.yaml
-├── elements/<base>_<timestamp>/generated.yaml
+├── cases/generated/<featureSlug>/suite.yaml
+├── elements/<featureSlug>/generated.yaml
 ├── configs/env.yaml
 ├── reports/                # Playwright HTML 报告
 └── src/cli/                # `pnpm ata` 入口
@@ -36,11 +36,13 @@ test-03/
 
 ### 概念分层（`feature.yaml` vs `suite.yaml`）
 
-| 层 | 含义 | 落盘 |
-|----|------|------|
-| `operations` | 能力摘要（评审先看） | `feature.yaml` |
-| `meta_ops` / `flows` | 元操作与测试流程链 | `feature.yaml` |
-| suite `steps` | Playwright 关键字步骤（可重建） | `suite.yaml` |
+| 层 | 含义 | 谁产出 | 落盘 |
+|----|------|--------|------|
+| `operations` | 能力摘要（评审先看） | LLM 分析 | `feature.yaml` |
+| `meta_ops` / `flows` | 可执行原子与测试流程链（权威编排） | **确定性编译**（`compileFlows`） | `feature.yaml` |
+| suite `steps` | Playwright 关键字步骤 | LLM gen（按 flows） | `suite.yaml` |
+
+分析流水线：源码 → LLM（只认能力）→ `compileMetaOpsAndFlows`（按 `operation.type` 生成 `meta_ops`/`flows`，并反写 `execution_chain` 为 meta_op_id 序列）→ 落盘。
 
 ---
 
@@ -54,7 +56,7 @@ cp .env.example .env
 
 | 变量 | 用途 |
 |------|------|
-| `DEEPSEEK_API_KEY` | **gen**、**compare 报告** 必需；compare 可用 `--skip-llm` 仅出 diff |
+| `DEEPSEEK_API_KEY` | **gen**、**compare 报告** 必需 |
 | `DEEPSEEK_BASE_URL` / `DEEPSEEK_MODEL` | 可选 |
 | `BASE_URL` | 被测环境（或 `configs/env.yaml`） |
 | `TEST_USER` / `TEST_PASS` / `TEST_ROLE*` | `ata auth` 登录 |
@@ -79,32 +81,32 @@ pnpm report             # 打开 reports/html
 
 ## 产物目录命名与 `-f` 参数
 
-产物目录（`artifacts` / `cases/generated` / `elements`）统一为：
+产物目录（`artifacts` / `cases/generated` / `elements`）统一为功能 slug：
 
 ```text
-<featureSlug>_<timestamp>
+<featureSlug>
 ```
 
-| 段 | 规则 | 示例 |
-|----|------|------|
-| `featureSlug` | 英文功能名 → 小写；中文等 → `feat_` + 名哈希前 8 位 | `material`、`feat_e997aee9` |
-| `timestamp` | UTC ISO，`:` / `.` 换为 `-`（与 compare 归档一致） | `2026-10-18T08-51-19-425Z` |
+| 规则 | 示例 |
+|------|------|
+| 英文功能名 → 小写 | `Material` → `material` |
+| 中文等 → `feat_` + 名哈希前 8 位 | → `feat_e997aee9` |
 
-完整示例：`artifacts/feat_e997aee9_2026-10-18T08-51-19-425Z/`。
+完整示例：`artifacts/feat_e997aee9/`。
 
-- **首次** `gen -f … -p …`：新建带时间戳的目录。
-- **同功能再次 gen**：复用该功能**最新**目录（保留同目录下的 `v1/`、`compare/`）。
-- 元素命名空间仍为稳定 `featureSlug`（如 `feat_e997aee9.pageReady`），不含时间戳。
-- 旧无时间戳目录（如 `feat_e997aee9/`）仍可读取；`-f` 功能名会解析到该功能最新目录。
+- **首次** `gen -f … -p …`：新建以功能 slug 命名的目录。
+- **同功能再次 gen**：覆盖同目录（保留 `v1/`、`compare/`）。
+- 元素命名空间与目录名一致（如 `feat_e997aee9.pageReady`）。
+- 历史带时间戳目录仍可用完整路径读取；新 gen 一律写入无时间戳的功能 slug 目录。
 
 `-f` / 路径用于定位产物目录：
 
 | 传入方式 | 示例 |
 |----------|------|
-| 功能名（中文） | `-f "问题管理平台字段配置"` → 最新 `feat_xxxx_<timestamp>` |
-| 英文功能名 | `-f Material` → 最新 `material_<timestamp>` |
-| 完整目录名 | `-f feat_e997aee9_2026-10-18T08-51-19-425Z` |
-| 目录路径 | `-f artifacts/feat_e997aee9_2026-10-18T08-51-19-425Z` |
+| 功能名（中文） | `-f "问题管理平台字段配置"` → `feat_xxxx` |
+| 英文功能名 | `-f Material` → `material` |
+| 完整目录名 | `-f feat_e997aee9` |
+| 目录路径 | `-f artifacts/feat_e997aee9` |
 | **推荐** feature 路径 | `-f artifacts/.../feature.yaml` |
 
 **snapshot / compare 请用与产物一致的目录名或 `feature.yaml` 路径**，避免基线与 current 不在同一目录。
@@ -141,10 +143,12 @@ pnpm ata gen -f "问题管理平台字段配置" -p "%TARGET_PROJECT%"
 
 **输出：**
 
-- `artifacts/<slug>/feature.yaml`
-- `cases/generated/<slug>/suite.yaml`
+- `artifacts/<slug>/feature.yaml`（含 `operations` + 编译后的 `meta_ops` / `flows`）
+- `cases/generated/<slug>/suite.yaml`（优先按 `flows` 编排）
 - `elements/<slug>/generated.yaml`
 - 可选诊断：`artifacts/<slug>/llm.raw.json`、`gen.llm.raw.json`
+
+对仅有 `operations` 的旧 `feature.yaml`，`gen -i` 会自动编译并回写 `meta_ops`/`flows`。
 
 ### 已有元操作，只重生成测试脚本
 
@@ -231,7 +235,6 @@ pnpm ata compare -f artifacts/<slug>/feature.yaml
 
 pnpm ata compare -f artifacts/<slug>/feature.yaml -b v1
 pnpm ata compare -f artifacts/<slug>/feature.yaml --list
-pnpm ata compare -f artifacts/<slug>/feature.yaml --skip-llm
 ```
 
 | 选项 | 说明 |
@@ -239,18 +242,17 @@ pnpm ata compare -f artifacts/<slug>/feature.yaml --skip-llm
 | `-f` | 同 snapshot |
 | `-b` | 基线标签，**默认 `v1`** |
 | `--list` | 列出 `baseline-manifest.yaml` 中的基线 |
-| `--skip-llm` | 只写 `latest-diff.yaml`，报告为规则兜底 |
 
 **对比产物**（`artifacts/<slug>/compare/`）：
 
 | 文件 | 内容 |
 |------|------|
 | `latest-diff.yaml` | 结构化差异；`meta.logic_changed`、`compare_mode: v1_vs_current` |
-| `latest-report.yaml` | LLM 报告；**`executive_summary`** 为逻辑简要 |
-| `latest-report.md` | 同上，Markdown「总览」 |
+| `latest-report.yaml` | LLM 报告；**`summary`** + 有变化的 **`flows`** |
+| `latest-report.md` | 同上，简洁 Markdown |
 | `diff-<时间>.yaml` / `report-<时间>.yaml` | 归档 |
 
-diff 以 `operations` → `flows` → `meta_ops`（按 id 对齐）为主；`suite` 按 `case.id` 辅助判断脚本漂移。
+diff **以完整测试流程链为主轴**（`compare_axis: full_flow`）：展开分析编译得到的 `flows` + `meta_ops`；仅旧产物无 `flows` 时才按 `execution_chain` 合成兜底。能力摘要与配套模型为辅；`suite` 仅作脚本漂移提示。报告只保留短总览 + 有变化流程的一句说明。
 
 ---
 
@@ -263,7 +265,7 @@ diff 以 `operations` → `flows` → `meta_ops`（按 id 对齐）为主；`sui
 ④ 改源码或手改 feature.yaml → pnpm ata gen -i artifacts/<slug>/feature.yaml
 ⑤ pnpm ata test …
 ⑥ pnpm ata compare -f artifacts/<slug>/feature.yaml
-⑦ 阅读 compare/latest-report.yaml（executive_summary）或 latest-report.md
+⑦ 阅读 compare/latest-report.yaml（summary / flows）或 latest-report.md
 ```
 
 ---
@@ -273,12 +275,13 @@ diff 以 `operations` → `flows` → `meta_ops`（按 id 对齐）为主；`sui
 | kind | keyword |
 |------|---------|
 | goto | goto |
-| filter_query | tableFilterQuery |
+| filter_query | tableFilterQuery（Select/Lov 用 `control`+`first:true`） |
 | assert_table_rows | assertTableHasRows |
 | open_detail | openDetailRow |
 | click | click |
 | fill / fill_form | fill / fillForm |
-| pick_lov | pickLov |
+| pick_lov | pickLov（默认第一行） |
+| （Select） | pickSelect（默认第一条） |
 | click_expect_api | clickExpectApi |
 | assert | assert |
 | set_var | setVar |
@@ -290,7 +293,7 @@ diff 以 `operations` → `flows` → `meta_ops`（按 id 对齐）为主；`sui
 | 现象 | 处理 |
 |------|------|
 | `缺少 DEEPSEEK_API_KEY` | 在 `.env` 配置 key |
-| `snapshot` 找不到 feature.yaml | `-f` 用实际产物路径，如 `artifacts/<base>_<timestamp>/feature.yaml` |
+| `snapshot` 找不到 feature.yaml | `-f` 用实际产物路径，如 `artifacts/<featureSlug>/feature.yaml` |
 | compare 报缺少 v1 | 先 `snapshot -l v1` |
 | 分析 / 生成质量 | 查 `artifacts/<slug>/llm.raw.json`、`gen.llm.raw.json` |
 | 套件校验 | `pnpm exec tsx scripts/validate-suite.ts <suite.yaml>`（若项目已配置） |

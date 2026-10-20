@@ -285,7 +285,7 @@ const SYSTEM_PROMPT = `你是前端功能分析助手，服务于 UI 自动化�
 
 【分析边界 — 最重要】
 A. 先识别本功能 pages[]：入口列表/详情，以及同功能目录、同路由族下的关联页（例：Material/MaterialSiteAssignment 属物料维护 → scope=in_feature）。
-B. 对本功能内每一个 in_feature 页面，必须分析其全部能力：查询/新建/详情/编辑保存/复制/行内动作/校验报错/页头按钮/状态机，并写清 execution_chain（从列表到该操作的最短有序链路）。
+B. 对本功能内每一个 in_feature 页面，必须分析其全部能力：查询/新建/详情/编辑保存/复制/行内动作/校验报错/页头按钮/状态机；写清 page_id、preconditions、unlock、api（执行链路由引擎按 type 编译，勿自由发明步骤词）。
 C. 若某跳转进入其他功能（不同菜单模块、独立功能包，如 MaterialSiteProperties、其他 *Manager）：
    - 只输出一条 related_page（scope=external）+ page_edges 出边；
    - 禁止再分析对方页的编辑/新建/删除/校验/page_states。
@@ -309,18 +309,19 @@ F. **接口识别（api-binding）**：
 2. 必须输出 pages、page_edges、operations、page_states、field_rules、validations、review_suggestions
 3. operations[].id 必须有（英文蛇形）；type 只能是：
    query | create | detail | table_picker | update | copy | related_page | delete | row_action | other
-   - 页头「编辑→改表单→保存」→ update（必须写 unlock / preconditions / execution_chain）
+   - 页头「编辑→改表单→保存」→ update（必须写 unlock / preconditions）
    - 子表/列表行内 Radio、Switch、行按钮，调专用 API、不点页头保存 → row_action（api + row_target）
    - Lov/弹表 → table_picker
-   - 跳转其他页 → related_page（entry、entry_control、preconditions、scope、execution_chain）
+   - 跳转其他页 → related_page（entry、entry_control、preconditions、scope）
      行内 a[onClick] 无 href：entry_control.kind 可为 link，但 elements_hints 须用 text/css（.action-link a），禁止 role=link
    - 禁止把设默认、行启用等标成 update
-4. 每个 operation 尽量填 page_id、scope、execution_chain
+4. 每个 operation 尽量填 page_id、scope、preconditions、unlock、api；**不必写 execution_chain**（本地编译器会按 type 生成 meta_ops/flows 并反写 chain）
 5. apis / elements_hints 为数组；api 来自源码字面量，禁止猜测
 6. **entry.route / pages[].route 必须是前端 SPA 路由**（如 /hwms/.../list），禁止写成 /v1/... 或 services 里的 API 路径；API 只进 operation.api 与 apis[]
 7. notes 写清自动化陷阱与跨功能停止点
 8. review_suggestions.status 固定 pending_human_review
 9. assert_checklist 含：会 clickExpectApi 的 op.api 可在源码/apis 中核对；entry.route 非 API
+10. **不要输出 meta_ops / flows**（由引擎确定性编译；输出也会被丢弃）
 
 【输出示例】
 ${JSON_SCHEMA_HINT}`;

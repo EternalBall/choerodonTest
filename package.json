@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "ata": "tsx src/cli/index.ts",
+    "test:unit": "tsx --test tests/unit/compileFlows.test.ts",
     "test:e2e": "playwright test",
     "report": "playwright show-report reports/html",
     "auth:setup": "tsx src/cli/index.ts auth"

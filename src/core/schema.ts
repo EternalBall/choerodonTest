@@ -221,8 +221,8 @@ export const OperationSchema = z.object({
   /** 执行前必须满足的步骤，如 ["enter_detail", "click:editBtn"] */
   preconditions: z.array(z.string()).optional(),
   /**
-   * 可执行链路（有序），如 ["list","detail","site_assignment","edit","save"]。
-   * gen 按此展开前置；缺省时回退 preconditions。
+   * 可执行链路（有序）：分析后由 compileFlows 反写为 meta_op_id 序列。
+   * 权威编排在 meta_ops + flows；本字段仅人读摘要。
    */
   execution_chain: z.array(z.string()).optional(),
   /** 从只读切到可写的动作，如 click:editBtn */
@@ -383,9 +383,9 @@ export const FeatureArtifactSchema = z.object({
   /** 页面间跳转关系 */
   page_edges: z.array(PageEdgeSchema).optional(),
   operations: z.array(OperationSchema).min(1),
-  /** 可编排元操作 */
+  /** 可编排元操作（analyze 后由 compileFlows 确定性生成） */
   meta_ops: z.array(MetaOpSchema).optional(),
-  /** 测试流程；gen 只从 flows 出用例 */
+  /** 测试流程（analyze 后由 compileFlows 生成；gen/compare 主轴） */
   flows: z.array(FlowSchema).optional(),
   page_states: z.array(PageStateSchema).optional(),
   field_rules: z.array(FieldRuleSchema).optional(),

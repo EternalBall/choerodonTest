@@ -278,13 +278,11 @@ program
     '功能名 / slug / artifacts/<slug> 目录 / feature.yaml 路径',
   )
   .option('-b, --baseline <label>', '基线标签（默认 v1）')
-  .option('--skip-llm', '仅生成 diff.yaml，报告用规则兜底')
   .option('--list', '列出已有基线')
   .action(async (opts: {
     feature: string;
     baseline?: string;
     list?: boolean;
-    skipLlm?: boolean;
   }) => {
     await ensureDirs();
     const { slug } = await resolveFeatureContext(opts.feature);
@@ -305,7 +303,6 @@ program
     const result = await runCompare({
       feature: opts.feature,
       baselineLabel: opts.baseline,
-      skipLlm: opts.skipLlm,
     });
     console.log(`\n✓ 差异 YAML: ${result.latestDiffFile}`);
     console.log(`  归档: ${result.diffFile}`);

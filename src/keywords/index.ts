@@ -5,6 +5,7 @@ import { waitReady, type ReadySpec } from './waitReady.js';
 import type { createElResolver } from './resolveElement.js';
 import { tableFilterQuery } from './tableFilterQuery.js';
 import { pickLov } from './pickLov.js';
+import { pickSelect } from './pickSelect.js';
 import { clickExpectApi } from './clickExpectApi.js';
 import { assertTableEmpty, assertTableHasRows } from './tableAssert.js';
 import { openDetailRow } from './openDetailRow.js';
@@ -69,8 +70,50 @@ export const actions: Record<string, ActionHandler> = {
   },
 
   async fillForm(ctx, args) {
-    const fields = args.fields as Record<string, string> | undefined;
-    if (!fields) throw new Error('fillForm 需要 fields');
+    const raw = args.fields;
+    if (!raw) throw new Error('fillForm 需要 fields');
+
+    // 数组：[{ name|target, value?, control?, first?, option? }]
+    if (Array.isArray(raw)) {
+      for (const item of raw) {
+        if (!item || typeof item !== 'object') continue;
+        const o = item as Record<string, unknown>;
+        const control = String(o.control || 'text');
+        const name = o.name != null ? String(o.name) : undefined;
+        const target = o.target != null ? String(o.target) : undefined;
+        if (control === 'select') {
+          await pickSelect(ctx, {
+            name,
+            target,
+            first: o.first !== false,
+            option: o.option ?? o.value,
+          });
+          continue;
+        }
+        if (control === 'lov') {
+          if (!target && !o.open) {
+            throw new Error('fillForm lov 字段需要 open/target（元素库 Lov 搜索图标）');
+          }
+          await pickLov(ctx, {
+            open: String(o.open || target),
+            first: o.first !== false,
+            row: o.value ? { value: String(o.value) } : { first: true },
+          });
+          continue;
+        }
+        const value = o.value != null ? String(o.value) : '';
+        if (!value) throw new Error(`fillForm 文本字段 ${name || target} 需要 value`);
+        if (target) await ctx.el(target).fill(value);
+        else if (name) {
+          await ctx.page.locator(`input[name="${name}"]`).first().fill(value);
+        } else {
+          throw new Error('fillForm 字段需要 name 或 target');
+        }
+      }
+      return;
+    }
+
+    const fields = raw as Record<string, string>;
     for (const [target, value] of Object.entries(fields)) {
       await ctx.el(target).fill(String(value));
     }
@@ -105,6 +148,7 @@ export const actions: Record<string, ActionHandler> = {
 
   tableFilterQuery,
   pickLov,
+  pickSelect,
   clickExpectApi,
   openDetailRow,
   assertTableHasRows,

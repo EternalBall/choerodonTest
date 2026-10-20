@@ -1,6 +1,7 @@
 import { logger } from '../core/logger.js';
 import type { FeatureArtifact } from '../core/schema.js';
 import { loadPlaybooks } from '../knowledge/loadPlaybooks.js';
+import { compileMetaOpsAndFlows } from './compileFlows.js';
 import { retrieveFeatureCode } from './retrieve.js';
 import { llmAnalyzeFeature } from './llmAnalyze.js';
 
@@ -10,7 +11,7 @@ export type AnalyzeOptions = {
 };
 
 /**
- * 分析功能：检索源码 + 加载 playbooks → DeepSeek LLM → artifacts。
+ * 分析功能：检索源码 + playbooks → DeepSeek（能力层）→ 确定性编译 meta_ops/flows。
  * 失败直接抛错，无启发式兜底（ADR 0011）；缺手册则失败（ADR 0007/0008）。
  */
 export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtifact> {
@@ -19,20 +20,23 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
     feature: opts.feature,
     projectRoot: opts.projectRoot,
   });
-  const artifact = await llmAnalyzeFeature({
+  const raw = await llmAnalyzeFeature({
     feature: opts.feature,
     snippets,
     playbooks,
   });
+  const artifact = compileMetaOpsAndFlows(raw, { force: true });
   logger.info(
     {
       feature: opts.feature,
       analyzer: artifact.analyzer,
       model: artifact.model,
       operations: artifact.operations.length,
+      meta_ops: artifact.meta_ops?.length ?? 0,
+      flows: artifact.flows?.length ?? 0,
       playbooks: playbooks.map((p) => p.id),
     },
-    'LLM 分析完成',
+    'LLM 分析完成并已编译 flows',
   );
   return artifact;
 }
