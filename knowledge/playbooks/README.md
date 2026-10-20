@@ -36,5 +36,24 @@
 | [row-action.md](./row-action.md) | 行内动作（Radio/Switch 等，非页头保存） |
 | [api-binding.md](./api-binding.md) | 从源码抽取 API 字面量 |
 
+### 旧版组件（choerodon-ui，非 Pro，类名前缀 `c7n-`）
+
+| 文件 | 主题 |
+|------|------|
+| [choerodon-legacy-input.md](./choerodon-legacy-input.md) | 旧版输入框：input、input-number、auto-complete |
+| [choerodon-legacy-select.md](./choerodon-legacy-select.md) | 旧版下拉/级联/树选择：select、cascader、tree-select |
+| [choerodon-legacy-check.md](./choerodon-legacy-check.md) | 旧版勾选/单选/开关/评分/滑块：checkbox、radio、switch、rate、slider |
+| [choerodon-legacy-date.md](./choerodon-legacy-date.md) | 旧版日期/时间/日历：date-picker、time-picker、calendar |
+| [choerodon-legacy-table.md](./choerodon-legacy-table.md) | 旧版表格/分页/列表：table、pagination、list |
+| [choerodon-legacy-form-button.md](./choerodon-legacy-form-button.md) | 旧版表单/按钮/图标选择：form、button、icon-select、icon |
+| [choerodon-legacy-tree-transfer.md](./choerodon-legacy-tree-transfer.md) | 旧版树/穿梭框/上传/裁剪：tree、transfer、upload、image-crop |
+| [choerodon-legacy-overlay.md](./choerodon-legacy-overlay.md) | 旧版弹窗/气泡/提示/下拉菜单：modal、popconfirm、popover、tooltip、dropdown |
+| [choerodon-legacy-feedback.md](./choerodon-legacy-feedback.md) | 旧版消息/通知/警告/结果/加载：message、notification、alert、result、spin |
+| [choerodon-legacy-status.md](./choerodon-legacy-status.md) | 旧版进度/骨架/徽标/标签/头像：progress、skeleton、badge、tag、avatar |
+| [choerodon-legacy-nav.md](./choerodon-legacy-nav.md) | 旧版标签页/菜单/步骤条/面包屑/锚点：tabs、menu、steps、breadcrumb、anchor |
+| [choerodon-legacy-layout.md](./choerodon-legacy-layout.md) | 旧版布局/栅格/卡片/折叠面板/分割线：layout、row、col、card、collapse、divider |
+| [choerodon-legacy-display.md](./choerodon-legacy-display.md) | 旧版时间轴/统计/走马灯/条码/水印：timeline、statistic、carousel、bar-code、water-mark |
+| [choerodon-legacy-misc.md](./choerodon-legacy-misc.md) | 旧版固钉/回到顶部/触发器：affix、back-top、trigger |
+
 - **运行时定位**：`platform/choerodon/kit.yaml`（`platformKit` 合并进用例元素）
 - **分析阶段**：`ata analyze` 经 `loadPlaybooks()` 加载本目录全部 `*.md`（除 README），注入 DeepSeek 提示词；目录为空则分析失败（ADR 0007/0008）
