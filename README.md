@@ -122,7 +122,9 @@ pnpm report             # 打开 reports/html
 | `ata test` | 执行 suite YAML |
 | `ata auth` | 登录，写入 `playwright/.auth/user.json` |
 | `ata snapshot` | 将 current 固化为 `artifacts/<slug>/v1/` |
-| `ata compare` | **v1 基线 vs current** → `diff.yaml` → LLM → `report.yaml` |
+| `ata compare` | **v1 基线 vs current** → `diff.yaml` → LLM → `report.yaml`；加 `--ata <功能目录> -p <项目根>` 则基线改取目标项目 `ata/` 最新版本（`-b V2` 指定版本，diff meta 记录 `baseline_source`） |
+| `ata confirm` | `-f <功能名> -d <功能目录> [-p 项目根] [-n 备注] [-y]`：人工确认后把 current 备份为 `<功能目录>/ata/V<n>/`（V1、V2…不可变；打印与上一版本的字段差异条数，不动目标项目 git） |
+| `ata versions` | `-d <功能目录> [-p 项目根]`：列出 `ata/` 已确认版本与确认时间 |
 | `ata actions` | 列出 suite 可用 keyword |
 
 ---

@@ -22,11 +22,13 @@ export type CompareDiffDocument = {
     compare_axis: 'full_flow';
     baseline_label: string;
     baseline_created_at?: string;
+    /** 基线来自 ata/ 版本时记录来源（ata 根目录与版本号）；v1 基线流程不出现 */
+    baseline_source?: { type: 'ata'; path: string; version: string };
     generated_at: string;
     logic_changed: boolean;
     suite_only_drift: boolean;
     sides: {
-      baseline: { role: 'v1'; feature: string; suite?: string };
+      baseline: { role: 'v1' | 'ata'; feature: string; suite?: string };
       current: { role: 'current'; feature: string; suite?: string };
     };
   };
@@ -84,6 +86,7 @@ export function buildDiffYaml(opts: {
   slug: string;
   baselineLabel: string;
   baselineCreatedAt?: string;
+  baselineSource?: { type: 'ata'; path: string; version: string };
   beforeArtifact: FeatureArtifact;
   afterArtifact: FeatureArtifact;
   artifactDiff: ArtifactDiff;
@@ -110,6 +113,7 @@ export function buildDiffYaml(opts: {
       compare_axis: 'full_flow',
       baseline_label: opts.baselineLabel,
       baseline_created_at: opts.baselineCreatedAt,
+      ...(opts.baselineSource ? { baseline_source: opts.baselineSource } : {}),
       generated_at: new Date().toISOString(),
       logic_changed: opts.logicChanged,
       suite_only_drift: opts.suiteOnlyDrift,

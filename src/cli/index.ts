@@ -10,6 +10,7 @@ import {
 import { loadEnvConfig } from '../core/config.js';
 import {
   featureArtifactFile,
+  featureSuiteFile,
   featureOutputSlug,
   resolveFeatureArtifactFile,
   resolveFeatureContext,
@@ -23,11 +24,21 @@ import { listActions } from '../keywords/index.js';
 import { loadKnowledgeFeature } from '../knowledge/loadFeature.js';
 import { FeatureArtifactSchema } from '../core/schema.js';
 import { runCompare } from '../compare/runCompare.js';
+import {
+  ataRoot,
+  confirmAtaVersion,
+  listAtaVersions,
+  loadAtaVersion,
+  nextAtaVersion,
+  readAtaRootManifest,
+} from '../compare/ataStore.js';
+import { diffFeatureArtifacts } from '../compare/diffArtifact.js';
 import { readBaselineManifest, snapshotBaseline } from '../compare/snapshot.js';
 import { maybePromptArchiveV1BeforeGen } from './promptArchiveBeforeGen.js';
 import { retrieveFeatureCode } from '../analyzer/retrieve.js';
 import { extractFieldFacts } from '../analyzer/staticExtract.js';
-import { stringify as stringifyYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import readline from 'node:readline';
 import { LlmHandoffPendingError } from '../analyzer/deepseekClient.js';
 
 dotenv.config();
@@ -312,11 +323,15 @@ program
     '-f, --feature <name>',
     '功能名 / slug / artifacts/<slug> 目录 / feature.yaml 路径',
   )
-  .option('-b, --baseline <label>', '基线标签（默认 v1）')
+  .option('-b, --baseline <label>', '基线标签（默认 v1；配合 --ata 时为版本号如 V2，默认最新）')
+  .option('--ata <featureDir>', '基线改取目标项目该功能目录下 ata/ 的已确认版本（配合 -p）')
+  .option('-p, --project <path>', '被测前端源码根目录（仅 --ata 使用）', TARGET_PROJECT_DEFAULT)
   .option('--list', '列出已有基线')
   .action(async (opts: {
     feature: string;
     baseline?: string;
+    ata?: string;
+    project: string;
     list?: boolean;
   }) => {
     await ensureDirs();
@@ -338,6 +353,7 @@ program
     const result = await runCompare({
       feature: opts.feature,
       baselineLabel: opts.baseline,
+      ata: opts.ata ? { projectRoot: opts.project, featureDir: opts.ata } : undefined,
     });
     console.log(`\n✓ 差异 YAML: ${result.latestDiffFile}`);
     console.log(`  归档: ${result.diffFile}`);
@@ -345,6 +361,94 @@ program
     console.log(`  归档: ${result.reportFile}`);
     console.log(`✓ 可读 Markdown: ${result.reportMdFile}`);
     console.log(`  路径逻辑变更: ${result.logicChanged ? '是' : '否'}`);
+  });
+
+function askYesNo(question: string): Promise<boolean> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (ans) => {
+      rl.close();
+      resolve(/^y(es)?$/i.test(ans.trim()));
+    });
+  });
+}
+
+program
+  .command('confirm')
+  .description(
+    '人工确认：把 current 分析结果备份为目标项目功能目录下 ata/V<n>/（版本不可变，不碰目标项目 git）',
+  )
+  .requiredOption('-f, --feature <name>', '功能名')
+  .requiredOption('-d, --dir <path>', '功能源码目录（相对项目根或绝对路径），ata/ 建在其下')
+  .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)
+  .option('-n, --note <text>', '备注写入 manifest')
+  .option('-y, --yes', '跳过人工确认询问')
+  .action(
+    async (opts: { feature: string; dir: string; project: string; note?: string; yes?: boolean }) => {
+      const slug = await resolveOutputSlugForFeature(opts.feature);
+      const artifactFile = featureArtifactFile(slug);
+      try {
+        await fs.access(artifactFile);
+      } catch {
+        throw new Error(`缺少当前元操作: ${artifactFile}，请先 pnpm ata gen -f ${opts.feature} -p ...`);
+      }
+      const suiteFile = featureSuiteFile(slug);
+      const root = ataRoot(opts.project, opts.dir);
+      const version = await nextAtaVersion(root);
+      console.log(`目标目录: ${path.join(root, version)}`);
+      console.log(`新版本号: ${version}`);
+
+      const versions = await listAtaVersions(root);
+      if (versions.length) {
+        // 只打印条数统计；与上一版本的字段级差异让人确认前心里有数
+        const prev = await loadAtaVersion(root, versions[versions.length - 1]);
+        const cur = FeatureArtifactSchema.parse(parseYaml(await fs.readFile(artifactFile, 'utf8')));
+        const d = diffFeatureArtifacts(prev.artifact, cur);
+        const count = (t: string) => d.field_facts.filter((x) => x.change === t).length;
+        console.log(
+          `与 ${prev.version} 的字段差异: 新增 ${count('added')} / 删除 ${count('removed')} / 变更 ${count('changed')}`,
+        );
+      } else {
+        console.log('尚无历史版本，将作为首个版本。');
+      }
+
+      if (!opts.yes) {
+        if (!(await askYesNo('确认生成该版本？[y/N] '))) {
+          console.log('已取消。');
+          return;
+        }
+      }
+      const res = await confirmAtaVersion({
+        projectRoot: opts.project,
+        featureDir: opts.dir,
+        slug,
+        feature: opts.feature,
+        artifactFile,
+        suiteFile,
+        note: opts.note,
+      });
+      console.log(`\n✓ 已生成 ${res.version}: ${res.dir}`);
+    },
+  );
+
+program
+  .command('versions')
+  .description('列出目标项目功能目录下 ata/ 的已确认版本')
+  .requiredOption('-d, --dir <path>', '功能源码目录')
+  .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)
+  .action(async (opts: { dir: string; project: string }) => {
+    const root = ataRoot(opts.project, opts.dir);
+    const versions = await listAtaVersions(root);
+    if (!versions.length) {
+      console.log(`尚无版本: ${root}，请先 pnpm ata confirm`);
+      return;
+    }
+    const manifest = await readAtaRootManifest(root);
+    console.log(`ata: ${root}\n最新版本: ${manifest?.latest ?? versions[versions.length - 1]}`);
+    for (const v of versions) {
+      const m = manifest?.versions?.[v];
+      console.log(`  - ${v}: ${m?.confirmed_at ?? '（无记录）'}${m?.note ? ` — ${m.note}` : ''}`);
+    }
   });
 
 program.parseAsync(process.argv).catch((err) => {
