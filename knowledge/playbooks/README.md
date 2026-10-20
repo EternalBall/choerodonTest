@@ -56,4 +56,5 @@
 | [choerodon-legacy-misc.md](./choerodon-legacy-misc.md) | 旧版固钉/回到顶部/触发器：affix、back-top、trigger |
 
 - **运行时定位**：`platform/choerodon/kit.yaml`（`platformKit` 合并进用例元素）
-- **分析阶段**：`ata analyze` 经 `loadPlaybooks()` 加载本目录全部 `*.md`（除 README），注入 DeepSeek 提示词；目录为空则分析失败（ADR 0007/0008）
+- **按需注入**：`ata analyze` 按被测源码的 import 来源选手册——`from 'choerodon-ui/pro'`（含 `/pro/lib/<dir>`）走 Pro 手册，`from 'choerodon-ui'` 走 `choerodon-legacy-*`；映射见 [index.yaml](./index.yaml)（`always` 始终注入，未识别到导入时用 `fallback`）。选中的 id 写入 `feature.yaml` 的 `playbooks`，`gen` 沿用。新增手册须同步登记到 index.yaml
+- **分析阶段**：`ata analyze` 经 `loadPlaybooks()` 加载本目录 `*.md`（除 README），再经 `selectPlaybooks()` 过滤，注入 DeepSeek 提示词；目录为空则分析失败（ADR 0007/0008）

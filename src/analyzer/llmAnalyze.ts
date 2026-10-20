@@ -8,7 +8,7 @@ import { featureLlmRawFile } from '../core/featurePaths.js';
 import { logger } from '../core/logger.js';
 import {
   formatPlaybooksForPrompt,
-  loadPlaybooks,
+  loadPlaybooksForSources,
   type PlaybookDoc,
 } from '../knowledge/loadPlaybooks.js';
 import { deepSeekChat } from './deepseekClient.js';
@@ -338,7 +338,8 @@ export async function llmAnalyzeFeature(opts: {
     throw new Error('没有检索到可分析的源码，请检查 -p 路径');
   }
 
-  const playbooks = opts.playbooks ?? (await loadPlaybooks());
+  const playbooks =
+    opts.playbooks ?? (await loadPlaybooksForSources(opts.snippets.map((s) => s.content)));
   if (!playbooks.length) {
     throw new Error(
       'knowledge/playbooks/ 下没有可用手册（*.md）。请先补全操作手册再分析（ADR 0007/0008）。',
