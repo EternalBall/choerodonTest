@@ -249,3 +249,94 @@ describe('行编辑模式下的增行(create)', () => {
     assert.ok(!kinds.some((id) => id.startsWith('click_create_')), '不应出现页头新建');
   });
 });
+
+describe('头行联动与抽屉', () => {
+  const art = (): FeatureArtifact =>
+    baseArtifact({
+      feature: '送货单',
+      entry: { route: '/p/list' },
+      pages: [
+        { id: 'list', name: '列表', route: '/p/list', scope: 'in_feature' },
+        { id: 'order', name: '订单', route: '/o/list', scope: 'external' },
+      ],
+      page_edges: [
+        {
+          id: 'list_to_order',
+          from_page: 'list',
+          to_page: 'order',
+          via: 'row_link',
+          control: { kind: 'link', name: '订单号', element: 'poLink' },
+        },
+      ],
+      operations: [
+        {
+          id: 'sign',
+          name: '签收确认',
+          type: 'row_action',
+          page_id: 'list',
+          api: '/v1/x/sign',
+          execution_chain: ['list', 'query', 'click_header_row', 'select_line_row', 'sign', 'confirm'],
+        },
+        {
+          id: 'mlt',
+          name: '创建物料批',
+          type: 'create',
+          page_id: 'list',
+          api: '/v1/x/save',
+          entry_control: { kind: 'button', name: '创建物料批', element: 'createMltBtn' },
+          execution_chain: ['list', 'query', 'select_header_row', 'select_line_rows', 'open_drawer', 'fill', 'save'],
+        },
+        {
+          id: 'po',
+          name: '跳转订单',
+          type: 'related_page',
+          page_id: 'order',
+          scope: 'external',
+          execution_chain: ['list', 'query', 'click_header_row', 'po'],
+        },
+      ],
+    } as Partial<FeatureArtifact>);
+
+  const kinds = (a: FeatureArtifact, flowId: string) => {
+    const flow = a.flows!.find((f) => f.id === flowId)!;
+    return flow.nodes.map((n) => a.meta_ops!.find((m) => m.id === n.meta_op_id)!);
+  };
+
+  it('签收确认：点头行→勾选行→点按钮→确认，接口挂在确认上', () => {
+    const steps = kinds(compileMetaOpsAndFlows(art(), { force: true }), 'sign');
+    assert.deepEqual(
+      steps.map((s) => s.id),
+      [
+        'goto_list',
+        'filter_query_list',
+        'click_header_row_list',
+        'select_line_row_list',
+        'action_sign',
+        'confirm_sign',
+      ],
+    );
+    assert.equal(steps[4]!.kind, 'click');
+    assert.equal(steps[5]!.kind, 'click_expect_api');
+    assert.equal(steps[5]!.api, '/v1/x/sign');
+  });
+
+  it('创建物料批：不套用「新建」模板，而是 勾选→开抽屉→填写→保存', () => {
+    const steps = kinds(compileMetaOpsAndFlows(art(), { force: true }), 'mlt');
+    const ids = steps.map((s) => s.id);
+    assert.ok(!ids.includes('click_create_list'));
+    assert.deepEqual(ids.slice(2), [
+      'click_header_row_list',
+      'select_line_row_list',
+      'open_drawer_mlt',
+      'fill_mlt',
+      'save_mlt',
+    ]);
+    assert.equal(steps.find((s) => s.id === 'open_drawer_mlt')!.element, 'createMltBtn');
+  });
+
+  it('external 目标页：在来源页点边上的控件，而不是 goto 外部页', () => {
+    const steps = kinds(compileMetaOpsAndFlows(art(), { force: true }), 'po');
+    assert.ok(steps.every((s) => s.page_id === 'list'));
+    assert.equal(steps[steps.length - 1]!.element, 'poLink');
+  });
+});

@@ -45,7 +45,30 @@ const TOKEN_SYNONYMS: Record<string, string> = {
   query_success: 'query',
   enter_detail: 'detail',
   open_detail: 'detail',
+  // 头行联动表 / 抽屉
+  select_header_row: 'click_header_row',
+  click_head_row: 'click_header_row',
+  select_line_rows: 'select_line_row',
+  check_line_row: 'select_line_row',
+  select_created_rows: 'select_created_row',
+  open_modal: 'open_drawer',
+  open_created_drawer: 'open_drawer',
+  assert_line_rows: 'assert_lines',
 };
+
+/**
+ * 头行联动表 / 抽屉类动作 token：出现任一即视为「头行联动」操作，
+ * 改按 execution_chain 顺序逐 token 编译（模板按 type 的固定步骤不含这些前置）。
+ */
+const MASTER_DETAIL_TOKENS = new Set([
+  'click_header_row',
+  'select_line_row',
+  'select_created_row',
+  'assert_lines',
+  'open_drawer',
+  'open_executed_drawer',
+  'open_scanned_drawer',
+]);
 
 const ACTION_TOKENS = new Set([
   'query',
@@ -64,6 +87,7 @@ const ACTION_TOKENS = new Set([
   'remove_line',
   'init',
 ]);
+MASTER_DETAIL_TOKENS.forEach((t) => ACTION_TOKENS.add(t));
 
 export function normalizeChainToken(raw: string, pageIds: Set<string>): string | null {
   const t = String(raw || '')
@@ -357,6 +381,65 @@ function draftFromActionToken(
         page_id: pageId,
         element: 'removeLineBtn',
       };
+    case 'click_header_row':
+      return {
+        id: `click_header_row_${pageId}`,
+        name: '点击头表行',
+        kind: 'click',
+        page_id: pageId,
+        element: 'headerRow',
+        note: '头行联动：点头行后行表才加载',
+      };
+    case 'assert_lines':
+      return {
+        id: `assert_lines_${pageId}`,
+        name: '断言行表有数据',
+        kind: 'assert_table_rows',
+        page_id: pageId,
+        args: { table: 'lineTable' },
+      };
+    case 'select_line_row':
+      return {
+        id: `select_line_row_${pageId}`,
+        name: '勾选行表数据行',
+        kind: 'click',
+        page_id: pageId,
+        element: 'lineRowCheckbox',
+      };
+    case 'select_created_row':
+      return {
+        id: `select_created_row_${op.id}`,
+        name: '勾选已创建行',
+        kind: 'click',
+        page_id: pageId,
+        element: 'createdRowCheckbox',
+      };
+    case 'open_drawer':
+      return {
+        id: `open_drawer_${op.id}`,
+        name: op.type === 'create' && op.entry_control?.name ? `点击${op.entry_control.name}` : '打开抽屉',
+        kind: 'click',
+        page_id: pageId,
+        // 仅「创建」类操作的入口按钮就是开抽屉的按钮；其它操作（删除/接收等）在已打开的抽屉里做事，
+        // 抽屉入口统一用 drawerOpenBtn，避免误用本操作自身的控件
+        element: op.type === 'create' ? entryElement(op) || 'drawerOpenBtn' : 'drawerOpenBtn',
+      };
+    case 'open_executed_drawer':
+      return {
+        id: `open_executed_drawer_${pageId}`,
+        name: '打开执行明细抽屉',
+        kind: 'click',
+        page_id: pageId,
+        element: 'executedDrawerLink',
+      };
+    case 'open_scanned_drawer':
+      return {
+        id: `open_scanned_drawer_${pageId}`,
+        name: '打开扫描明细抽屉',
+        kind: 'click',
+        page_id: pageId,
+        element: 'scannedDrawerLink',
+      };
     case 'init':
       return {
         id: `click_init_${op.id}`,
@@ -369,6 +452,79 @@ function draftFromActionToken(
     default:
       return null;
   }
+}
+
+/** execution_chain 是否含头行联动 / 抽屉 token */
+function hasMasterDetailTokens(op: Operation, pageIds: Set<string>): boolean {
+  return normalizeExecutionChain(op.execution_chain, pageIds).some((t) =>
+    MASTER_DETAIL_TOKENS.has(t),
+  );
+}
+
+/**
+ * 头行联动操作：按 execution_chain 顺序逐 token 编译。
+ * - 页面 id → 导航；已知动作 token → 对应步骤；
+ * - 未知蛇形 token（如 sign_confirm、receive）视为终端动作，带 op.api 时用 click_expect_api。
+ * 动机：type 模板（如 create 的「点新建→填表→保存」）不含「点头行/勾选行/开抽屉」，
+ * 套用会生成点不到的步骤。
+ */
+function masterDetailSteps(
+  op: Operation,
+  pages: PageNode[],
+  pageIds: Set<string>,
+  edges: PageEdge[],
+  entryRoute?: string,
+): DraftStep[] {
+  const pageId = pageIdOf(op, pages, entryRoute);
+  const steps: DraftStep[] = [];
+  const push = (d: DraftStep) => {
+    if (!steps.some((s) => s.id === d.id)) steps.push(d);
+  };
+  // external 目标页（如 po_link）的入口在来源页：先到来源页再点边上的控件
+  const inEdge = op.scope === 'external' ? edges.find((e) => e.to_page === pageId) : undefined;
+  const basePage = inEdge ? inEdge.from_page : pageId;
+  gotoStepsFor(basePage, pages, edges, op, entryRoute).forEach(push);
+
+  let terminal = false;
+  for (const tok of normalizeExecutionChain(op.execution_chain, pageIds)) {
+    if (pageIds.has(tok)) continue; // 页面 token 已由导航覆盖
+    if (tok === 'cancel') continue;
+    const d = draftFromActionToken(tok, op, basePage);
+    if (d) {
+      push(d);
+      if (tok === 'save' || tok === 'delete') terminal = true;
+      continue;
+    }
+    // 未知蛇形 token → 终端动作
+    if (!terminal) {
+      push({
+        id: `action_${op.id}`,
+        name: op.name,
+        kind: op.api ? 'click_expect_api' : 'click',
+        page_id: basePage,
+        element: inEdge?.control?.element || entryElement(op),
+        api: op.api,
+        args: op.api ? { urlIncludes: op.api } : undefined,
+        note: op.description,
+      });
+      terminal = true;
+    }
+  }
+  // 终端动作后还有确认弹窗（Modal.confirm/Popconfirm）时，接口是在确认之后才发出：
+  // 把 click_expect_api 从动作按钮挪到确认按钮上
+  const actIdx = steps.findIndex((s) => s.id === `action_${op.id}`);
+  const cfmIdx = steps.findIndex((s, i) => i > actIdx && s.id === `confirm_${op.id}`);
+  if (actIdx >= 0 && cfmIdx > actIdx && steps[actIdx]!.api) {
+    const act = steps[actIdx]!;
+    steps[cfmIdx] = {
+      ...steps[cfmIdx]!,
+      kind: 'click_expect_api',
+      api: act.api,
+      args: { urlIncludes: act.api },
+    };
+    steps[actIdx] = { ...act, kind: 'click', api: undefined, args: undefined };
+  }
+  return steps;
 }
 
 /** 按 operation.type 生成规范步骤草案（不依赖 LLM chain） */
@@ -409,6 +565,10 @@ function templateStepsForOp(
     }
     const fromTok = draftFromActionToken(tok, op, pageId);
     if (fromTok) push(fromTok);
+  }
+
+  if (hasMasterDetailTokens(op, pageIds)) {
+    return masterDetailSteps(op, pages, pageIds, edges, entryRoute);
   }
 
   switch (op.type) {
