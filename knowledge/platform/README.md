@@ -4,6 +4,7 @@
 
 - 同组件在本系统 DOM 一致（Table / QueryBar / Form / LOV / Select / DatePicker / Modal / Upload / Tabs / Tree / **表格行编辑**）
 - **禁止**逗号并集选择器（如 `.hmes-style, .c7n-pro-table-wrapper`）→ Playwright strict mode
+- Table 壳 / 分页 / 勾选 / 工具栏：见 [playbooks/choerodon-table.md](../playbooks/choerodon-table.md)；勿用 `.c7n-pro-table, table`
 - Modal / Drawer：同一 Pro Modal；用 `.c7n-pro-modal-active`；见 [playbooks/choerodon-modal.md](../playbooks/choerodon-modal.md)
 - QueryBar：filterBar 用 refresh 图标；professionalBar 用按钮「查询」；见 [playbooks/choerodon-table-queryBar.md](../playbooks/choerodon-table-queryBar.md)
 - Select ≠ Lov（`lookupCode` vs `lovCode`）；Lov 见 [playbooks/choerodon-lov.md](../playbooks/choerodon-lov.md)；DatePicker 前缀是 `calendar-picker`；Tabs 是 `c7n-tabs`（非 pro）

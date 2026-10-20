@@ -6,9 +6,14 @@ pageReady:
   css: .hmes-style
   note: 页面根；勿写 .hmes-style, .c7n-pro-table-wrapper
 
+# ---------- Table 壳 / 分页 / 勾选 / 工具栏（见 playbooks/choerodon-table.md）----------
 table:
   css: .c7n-pro-table.c7n-pro-table-bordered
   note: 外层是 div.c7n-pro-table，勿再写 ", table"
+
+tableWrapper:
+  css: .c7n-pro-table-wrapper
+  note: 含 queryBar + toolbar + 表 + 分页；多表时功能层再收窄
 
 tableBody:
   css: .c7n-pro-table-tbody
@@ -20,11 +25,58 @@ tableEmpty:
   text: 暂无数据
   note: 列表/子表空态文案；断言用 assertTableEmpty / assertTableHasRows
 
-pagination:
-  css: .c7n-pro-table-pagination
-
 tableSpin:
   css: .c7n-spin-spinning, .ant-spin-spinning
+
+pagination:
+  css: .c7n-pro-table-pagination
+  note: nav 包装；内部为 .c7n-pro-pagination-*
+
+paginationNext:
+  css: .c7n-pro-table-pagination .c7n-pro-pagination-pager-next
+  note: icon navigate_next；翻页后等 tableSpin
+
+paginationPrev:
+  css: .c7n-pro-table-pagination .c7n-pro-pagination-pager-prev
+
+paginationFirst:
+  css: .c7n-pro-table-pagination .c7n-pro-pagination-pager-first
+
+paginationLast:
+  css: .c7n-pro-table-pagination .c7n-pro-pagination-pager-last
+
+paginationSizeChanger:
+  css: .c7n-pro-table-pagination .c7n-pro-pagination-size-changer
+  note: 改 pageSize 会回到第 1 页并 query
+
+paginationPageInfo:
+  css: .c7n-pro-table-pagination .c7n-pro-pagination-page-info
+
+tableToolbar:
+  css: .c7n-pro-table-toolbar
+  note: Table.buttons；与页头 createBtn、行编辑 thead icon-add 区分
+
+tableToolbarBtnGroup:
+  css: .c7n-pro-table-toolbar .c7n-pro-table-toolbar-button-group
+
+tableSelectionColumn:
+  css: .c7n-pro-table-selection-column
+  note: selectionMode=rowbox 等；表头=全选，tbody=行勾选
+
+tableRowCheckbox:
+  css: .c7n-pro-table-tbody tr.c7n-pro-table-row .c7n-pro-table-selection-column .c7n-pro-checkbox-inner
+  note: 多行时 nth 或 within 行
+
+tableHeaderCheckbox:
+  css: .c7n-pro-table thead .c7n-pro-table-selection-column .c7n-pro-checkbox-inner
+  note: 全选当前页
+
+tableSelectionTips:
+  css: .c7n-pro-table-selection-tips
+
+tableExpandIcon:
+  css: .c7n-pro-table-expand-icon
+  note: mode=tree 或可展开行；非侧栏 .c7n-tree
 
 filterBar:
   css: .c7n-pro-table-dynamic-filter-bar

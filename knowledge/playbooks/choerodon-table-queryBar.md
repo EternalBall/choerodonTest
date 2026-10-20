@@ -1,7 +1,8 @@
 # Choerodon Table QueryBar（professionalBar / advanced / filterBar）
 
 源码：[components-pro/table/query-bar](https://github.com/open-hand/choerodon-ui/tree/master/components-pro/table/query-bar)。  
-`Table.queryBar` 决定形态；关键字统一 `tableFilterQuery`（`mode`）。
+`Table.queryBar` 决定形态；关键字统一 `tableFilterQuery`（`mode`）。  
+整表壳 / 分页 / 勾选 / 工具栏见 [choerodon-table.md](./choerodon-table.md)。
 
 | queryBar / 形态 | 根 class | 查询按钮 |
 |-----------------|----------|----------|

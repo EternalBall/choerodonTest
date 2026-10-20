@@ -12,6 +12,8 @@
 | **TreeSelect** | 表单选树节点（部门等） | 如下拉 Select，popup 内是 Tree |
 | **Cascader** | 省市区、多级分类 | 多列 menu，逐级点选 |
 
+Table `mode="tree"`（行内 expand-icon）不是本篇控件，见 [choerodon-table.md](./choerodon-table.md)。
+
 ## Tree DOM
 
 ```

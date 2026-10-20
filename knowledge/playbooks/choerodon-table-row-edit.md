@@ -3,7 +3,8 @@
 适用于：独立页/子表在 **页头点「编辑」** 后，`canEdit=true`，通过 **表头加号增行、行内控件改值、行首删除**，再点页头 **保存**。
 
 源码参考：[choerodon-ui/components-pro/table](https://github.com/open-hand/choerodon-ui/tree/master/components-pro/table)
-（`getEditorByField` / `TableEditor` / Column.`editor`）
+（`getEditorByField` / `TableEditor` / Column.`editor`）。  
+整表壳 / 分页 / 勾选 / `Table.buttons` 工具栏见 [choerodon-table.md](./choerodon-table.md)（行编辑 `thead icon-add` ≠ toolbar `buttons.add`）。
 
 与下列模式区分：
 

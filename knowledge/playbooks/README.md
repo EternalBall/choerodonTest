@@ -8,6 +8,7 @@
 
 | 文件 | 主题 |
 |------|------|
+| [choerodon-table.md](./choerodon-table.md) | Table 壳 / 分页 / 勾选 / 工具栏（总册） |
 | [choerodon-table-filterBar.md](./choerodon-table-filterBar.md) | 列表动态筛选条（filterBar） |
 | [choerodon-table-queryBar.md](./choerodon-table-queryBar.md) | professionalBar / advancedBar / queryBar 对照 |
 | [choerodon-create-detail.md](./choerodon-create-detail.md) | 新建 / 详情 / 编辑状态机 |
