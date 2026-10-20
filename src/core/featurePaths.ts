@@ -1,15 +1,32 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { featureSlug } from '../knowledge/featureSlug.js';
+import {
+  featureBaseSlugFromOutput,
+  featureSlug,
+  isRunOutputSlug,
+  makeRunOutputSlug,
+} from '../knowledge/featureSlug.js';
 import { PATHS } from './paths.js';
 
-/** 功能产物目录：artifacts / cases/generated / elements 下均按 slug 分子目录 */
+/**
+ * 元素命名空间 / 稳定功能键（不含时间戳）。
+ * 产物目录请用 `toArtifactDirName` / `resolveOutputSlugForFeature`。
+ */
 export function featureOutputSlug(feature: string): string {
   return featureSlug(feature);
 }
 
+/**
+ * 产物目录名：已是 run slug（含时间戳）则原样使用，避免二次 slugify 破坏 `-`；
+ * 否则按功能名得到稳定 base slug（兼容旧无时间戳目录）。
+ */
+export function toArtifactDirName(featureOrSlug: string): string {
+  if (isRunOutputSlug(featureOrSlug)) return featureOrSlug;
+  return featureSlug(featureOrSlug);
+}
+
 export function featureArtifactDir(featureOrSlug: string): string {
-  return path.join(PATHS.artifacts, featureOutputSlug(featureOrSlug));
+  return path.join(PATHS.artifacts, toArtifactDirName(featureOrSlug));
 }
 
 /** 分析主产物：artifacts/<slug>/feature.yaml */
@@ -29,23 +46,81 @@ export function featureGenLlmRawFile(featureOrSlug: string): string {
 
 /** 编译用例：cases/generated/<slug>/suite.yaml */
 export function featureSuiteFile(featureOrSlug: string): string {
-  return path.join(PATHS.generatedCases, featureOutputSlug(featureOrSlug), 'suite.yaml');
+  return path.join(PATHS.generatedCases, toArtifactDirName(featureOrSlug), 'suite.yaml');
 }
 
 /** 编译元素：elements/<slug>/generated.yaml */
 export function featureElementsFile(featureOrSlug: string): string {
-  return path.join(PATHS.elements, featureOutputSlug(featureOrSlug), 'generated.yaml');
+  return path.join(PATHS.elements, toArtifactDirName(featureOrSlug), 'generated.yaml');
 }
 
 /** 旧平铺路径（仅读取兼容） */
 function legacyArtifactFile(featureOrSlug: string): string {
-  return path.join(PATHS.artifacts, `${featureOutputSlug(featureOrSlug)}.feature.yaml`);
+  return path.join(PATHS.artifacts, `${toArtifactDirName(featureOrSlug)}.feature.yaml`);
 }
 
 /**
- * 解析 feature.yaml：优先 artifacts/<slug>/feature.yaml，其次旧平铺路径。
+ * 列出某功能在 artifacts 下的产物目录（含旧无时间戳目录与 `base_timestamp`）。
+ * 按时间戳新→旧；无时间戳的旧目录排在最后。
+ */
+export async function listOutputSlugsForFeature(feature: string): Promise<string[]> {
+  const base = featureSlug(feature);
+  let entries: string[];
+  try {
+    entries = await fs.readdir(PATHS.artifacts);
+  } catch {
+    return [];
+  }
+
+  const matches: string[] = [];
+  for (const name of entries) {
+    if (name.startsWith('.')) continue;
+    if (name === base) {
+      matches.push(name);
+      continue;
+    }
+    if (isRunOutputSlug(name) && featureBaseSlugFromOutput(name) === base) {
+      matches.push(name);
+    }
+  }
+
+  matches.sort((a, b) => {
+    const ta = isRunOutputSlug(a) ? a.slice(base.length + 1) : '';
+    const tb = isRunOutputSlug(b) ? b.slice(base.length + 1) : '';
+    return tb.localeCompare(ta);
+  });
+  return matches;
+}
+
+/** 该功能最新产物目录 slug；无则 undefined */
+export async function findLatestOutputSlug(feature: string): Promise<string | undefined> {
+  const list = await listOutputSlugsForFeature(feature);
+  for (const name of list) {
+    try {
+      await fs.access(path.join(PATHS.artifacts, name, 'feature.yaml'));
+      return name;
+    } catch {
+      // empty / incomplete dir
+    }
+  }
+  return list[0];
+}
+
+/**
+ * 解析 gen 落盘目录：已有则复用最新（保留 compare/v1）；否则新建 `base_timestamp`。
+ */
+export async function resolveOutputSlugForFeature(feature: string): Promise<string> {
+  return (await findLatestOutputSlug(feature)) ?? makeRunOutputSlug(feature);
+}
+
+/**
+ * 解析 feature.yaml：优先最新 artifacts/<slug>/feature.yaml，其次旧平铺路径。
  */
 export async function resolveFeatureArtifactFile(feature: string): Promise<string> {
+  const latest = await findLatestOutputSlug(feature);
+  if (latest) {
+    return path.join(PATHS.artifacts, latest, 'feature.yaml');
+  }
   const next = featureArtifactFile(feature);
   try {
     await fs.access(next);
@@ -63,7 +138,7 @@ export async function resolveFeatureArtifactFile(feature: string): Promise<strin
 }
 
 /**
- * 从 -i 路径推断功能 slug（用于与 analyze 目录对齐）。
+ * 从 -i 路径推断功能产物目录名（用于与 analyze 目录对齐）。
  * 支持 artifacts/<slug>/feature.yaml 与 artifacts/<slug>.feature.yaml。
  */
 export function slugFromArtifactInputPath(inputPath: string): string | undefined {
@@ -81,3 +156,82 @@ export function slugFromArtifactInputPath(inputPath: string): string | undefined
   }
   return undefined;
 }
+
+export type FeatureContext = {
+  slug: string;
+  artifactFile: string;
+  featureDir: string;
+};
+
+/**
+ * 解析 artifacts 下 feature.yaml 路径 → slug。
+ * 支持根目录 current 与 v1/ 等子目录中的副本（compare 时 current 仍指向根目录）。
+ */
+export function artifactLocationFromFeatureFile(
+  featureYamlPath: string,
+): { slug: string } | undefined {
+  const abs = path.resolve(featureYamlPath);
+  if (path.basename(abs) !== 'feature.yaml') return undefined;
+  const artifactsBase = path.basename(PATHS.artifacts);
+  const dir = path.dirname(abs);
+  if (path.basename(path.dirname(dir)) === artifactsBase) {
+    return { slug: path.basename(dir) };
+  }
+  if (path.basename(path.dirname(path.dirname(dir))) === artifactsBase) {
+    return { slug: path.basename(path.dirname(dir)) };
+  }
+  return undefined;
+}
+
+/**
+ * 从功能名、slug、artifacts/<slug> 目录或 feature.yaml 路径解析产物目录。
+ * **current** 始终为 artifacts/<slug>/feature.yaml（不是 v1/ 内副本）。
+ * 传入功能名时解析为该功能最新产物目录。
+ */
+export async function resolveFeatureContext(input: string): Promise<FeatureContext> {
+  const trimmed = input.trim();
+  const abs = path.isAbsolute(trimmed) ? trimmed : path.resolve(PATHS.root, trimmed);
+
+  if (/\.ya?ml$/i.test(trimmed)) {
+    const fromPath = slugFromArtifactInputPath(abs);
+    const loc =
+      artifactLocationFromFeatureFile(abs) ?? (fromPath ? { slug: fromPath } : undefined);
+    if (loc) {
+      const featureDir = featureArtifactDir(loc.slug);
+      return {
+        slug: loc.slug,
+        artifactFile: path.join(featureDir, 'feature.yaml'),
+        featureDir,
+      };
+    }
+  }
+
+  const featureInDir = path.join(abs, 'feature.yaml');
+  try {
+    await fs.access(featureInDir);
+    if (path.basename(path.dirname(abs)) === path.basename(PATHS.artifacts)) {
+      const slug = path.basename(abs);
+      return { slug, artifactFile: featureInDir, featureDir: abs };
+    }
+  } catch {
+    // not a feature directory
+  }
+
+  // 已是带时间戳的产物目录名 → 精确定位
+  if (isRunOutputSlug(trimmed)) {
+    const featureDir = featureArtifactDir(trimmed);
+    return {
+      slug: trimmed,
+      artifactFile: path.join(featureDir, 'feature.yaml'),
+      featureDir,
+    };
+  }
+
+  // 功能名或 base slug → 该功能最新产物目录（含时间戳优先）
+  const latest = await findLatestOutputSlug(trimmed);
+  const slug = latest ?? featureSlug(trimmed);
+  const featureDir = featureArtifactDir(slug);
+  return { slug, artifactFile: path.join(featureDir, 'feature.yaml'), featureDir };
+}
+
+export { makeRunOutputSlug, isRunOutputSlug, featureBaseSlugFromOutput };

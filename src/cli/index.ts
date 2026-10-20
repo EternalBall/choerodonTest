@@ -12,13 +12,19 @@ import {
   featureArtifactFile,
   featureOutputSlug,
   resolveFeatureArtifactFile,
+  resolveFeatureContext,
+  resolveOutputSlugForFeature,
   slugFromArtifactInputPath,
+  findLatestOutputSlug,
 } from '../core/featurePaths.js';
 import { logger } from '../core/logger.js';
 import { PATHS } from '../core/paths.js';
 import { listActions } from '../keywords/index.js';
 import { loadKnowledgeFeature } from '../knowledge/loadFeature.js';
 import { FeatureArtifactSchema } from '../core/schema.js';
+import { runCompare } from '../compare/runCompare.js';
+import { readBaselineManifest, snapshotBaseline } from '../compare/snapshot.js';
+import { maybePromptArchiveV1BeforeGen } from './promptArchiveBeforeGen.js';
 
 dotenv.config();
 
@@ -88,7 +94,7 @@ program
   .action(async (opts: { feature: string; project: string }) => {
     await ensureDirs();
     console.warn('\n提示: analyze 已合并到 gen，推荐: pnpm ata gen -f ... -p ...\n');
-    const outputSlug = featureOutputSlug(opts.feature);
+    const outputSlug = await resolveOutputSlugForFeature(opts.feature);
     const artifact = await analyzeFeatureFromSource(opts.feature, opts.project);
     const result = await runGenPipeline({
       artifact,
@@ -96,7 +102,7 @@ program
       writeArtifact: true,
       metaOnly: true,
     });
-    const out = result.artifactFile ?? featureArtifactFile(opts.feature);
+    const out = result.artifactFile ?? featureArtifactFile(outputSlug);
     console.log(`\n✓ 元操作: ${out}`);
     printArtifactSummary(artifact);
     console.log(`  下一步: pnpm ata gen -f ${opts.feature}  或  pnpm ata gen -i ${out}`);
@@ -116,6 +122,8 @@ program
   .option('-i, --input <file>', '已有 artifacts/<slug>/feature.yaml，仅重新生成测试脚本')
   .option('--meta-only', '只写元操作文件，不生成 suite（需 -f 且 -p）')
   .option('--from-knowledge', '与 -f 同义，优先 knowledge/features')
+  .option('--archive-v1', '已有元操作时，不询问直接存档 v1（尚无 v1 时）')
+  .option('--no-archive-prompt', '跳过「存档 v1」询问（不自动存档）')
   .action(
     async (opts: {
       input?: string;
@@ -123,6 +131,8 @@ program
       project?: string;
       fromKnowledge?: boolean;
       metaOnly?: boolean;
+      archiveV1?: boolean;
+      noArchivePrompt?: boolean;
     }) => {
       await ensureDirs();
       const { parse } = await import('yaml');
@@ -132,15 +142,18 @@ program
       let writeArtifact = false;
 
       if (opts.feature && opts.project) {
-        outputSlug = featureOutputSlug(opts.feature);
+        outputSlug = await resolveOutputSlugForFeature(opts.feature);
         artifact = await analyzeFeatureFromSource(opts.feature, opts.project);
         writeArtifact = true;
       } else if (opts.input) {
         artifact = FeatureArtifactSchema.parse(parse(await fs.readFile(opts.input, 'utf8')));
         outputSlug =
-          slugFromArtifactInputPath(opts.input) ?? featureOutputSlug(artifact.feature);
+          slugFromArtifactInputPath(opts.input) ??
+          (await findLatestOutputSlug(artifact.feature)) ??
+          featureOutputSlug(artifact.feature);
       } else if (opts.feature) {
-        outputSlug = featureOutputSlug(opts.feature);
+        outputSlug =
+          (await findLatestOutputSlug(opts.feature)) ?? featureOutputSlug(opts.feature);
         artifact =
           (await loadKnowledgeFeature(opts.feature)) ||
           FeatureArtifactSchema.parse(
@@ -153,6 +166,18 @@ program
       if (opts.metaOnly && !writeArtifact) {
         throw new Error('--meta-only 仅在与 -f、-p 从源码分析时可用');
       }
+
+      if (opts.archiveV1 && opts.noArchivePrompt) {
+        throw new Error('--archive-v1 与 --no-archive-prompt 不能同时使用');
+      }
+
+      const featureName = artifact.feature || opts.feature || outputSlug;
+      await maybePromptArchiveV1BeforeGen({
+        feature: featureName,
+        slug: outputSlug,
+        archiveV1: opts.archiveV1,
+        noArchivePrompt: opts.noArchivePrompt,
+      });
 
       let baseURL: string | undefined;
       try {
@@ -216,6 +241,78 @@ program
     delete process.env.SKIP_AUTH;
     const code = await runPlaywright(['--project=setup']);
     process.exit(code);
+  });
+
+program
+  .command('snapshot')
+  .description(
+    '固化当前元操作 + 测试脚本为对比基线（artifacts/<slug>/<label>/，与 feature.yaml 同目录）',
+  )
+  .requiredOption(
+    '-f, --feature <name>',
+    '功能名 / slug / artifacts/<slug> 目录 / feature.yaml 路径',
+  )
+  .option('-l, --label <name>', '基线标签，如 v1', 'v1')
+  .option('--note <text>', '备注写入 manifest')
+  .action(async (opts: { feature: string; label: string; note?: string }) => {
+    await ensureDirs();
+    const { dir, label, slug } = await snapshotBaseline({
+      feature: opts.feature,
+      label: opts.label,
+      note: opts.note,
+    });
+    console.log(`\n✓ 基线已保存: ${dir}`);
+    console.log(`  slug: ${slug}`);
+    console.log(`  标签: ${label}`);
+    console.log(`  含: feature.yaml${''}、suite.yaml（若已生成）、generated.yaml（若有）`);
+    console.log(`  对比: pnpm ata compare -f ${opts.feature} -b ${label}`);
+  });
+
+program
+  .command('compare')
+  .description(
+    'v1 基线 vs 当前 current（artifacts/<slug>/feature.yaml）：diff.yaml → LLM → report.yaml',
+  )
+  .requiredOption(
+    '-f, --feature <name>',
+    '功能名 / slug / artifacts/<slug> 目录 / feature.yaml 路径',
+  )
+  .option('-b, --baseline <label>', '基线标签（默认 v1）')
+  .option('--skip-llm', '仅生成 diff.yaml，报告用规则兜底')
+  .option('--list', '列出已有基线')
+  .action(async (opts: {
+    feature: string;
+    baseline?: string;
+    list?: boolean;
+    skipLlm?: boolean;
+  }) => {
+    await ensureDirs();
+    const { slug } = await resolveFeatureContext(opts.feature);
+    if (opts.list) {
+      const manifest = await readBaselineManifest(slug);
+      const keys = Object.keys(manifest.baselines);
+      if (!keys.length) {
+        console.log('尚无基线，请先: pnpm ata snapshot -f <功能> -l v1');
+        return;
+      }
+      console.log(`最新基线: ${manifest.latest ?? '（未设置）'}`);
+      for (const k of keys) {
+        const b = manifest.baselines[k]!;
+        console.log(`  - ${k}: ${b.createdAt}${b.note ? ` — ${b.note}` : ''}`);
+      }
+      return;
+    }
+    const result = await runCompare({
+      feature: opts.feature,
+      baselineLabel: opts.baseline,
+      skipLlm: opts.skipLlm,
+    });
+    console.log(`\n✓ 差异 YAML: ${result.latestDiffFile}`);
+    console.log(`  归档: ${result.diffFile}`);
+    console.log(`✓ 对比报告 YAML: ${result.latestReportFile}`);
+    console.log(`  归档: ${result.reportFile}`);
+    console.log(`✓ 可读 Markdown: ${result.reportMdFile}`);
+    console.log(`  路径逻辑变更: ${result.logicChanged ? '是' : '否'}`);
   });
 
 program.parseAsync(process.argv).catch((err) => {

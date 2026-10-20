@@ -4,8 +4,10 @@
 
 | 步骤 | 命令 | 输入 | 输出 |
 |------|------|------|------|
-| **1. 生成** | `ata gen -f … -p …` | 被测源码 + Playbooks + Platform Kit | **元操作** `artifacts/<slug>/feature.yaml` + **测试脚本** `cases/generated/<slug>/suite.yaml` + `elements/<slug>/generated.yaml` |
+| **1. 生成** | `ata gen -f … -p …` | 被测源码 + Playbooks + Platform Kit | **元操作** `artifacts/<base>_<ts>/feature.yaml` + **测试脚本** `cases/generated/<base>_<ts>/suite.yaml` + `elements/<base>_<ts>/generated.yaml` |
 | **2. 执行** | `ata test -c …` | suite + 元素库 | `reports/html` |
+
+产物目录命名：`<featureSlug>_<timestamp>`（如 `feat_e997aee9_2026-10-18T08-51-19-425Z`）。同功能再次 gen 复用最新目录。
 
 ```text
 被测源码
@@ -13,15 +15,15 @@
     │    ① LLM 分析源码 → 元操作产物
     │    ② LLM + playbooks → suite；kit 合并 → elements
     ▼
-artifacts/<slug>/feature.yaml
-cases/generated/<slug>/suite.yaml
-elements/<slug>/generated.yaml
+artifacts/<base>_<ts>/feature.yaml
+cases/generated/<base>_<ts>/suite.yaml
+elements/<base>_<ts>/generated.yaml
     │  ata test
     ▼
 reports/html
 ```
 
-若已有元操作文件，可只重做测试脚本：`pnpm ata gen -i artifacts/<slug>/feature.yaml`。
+若已有元操作文件，可只重做测试脚本：`pnpm ata gen -i artifacts/<base>_<ts>/feature.yaml`。
 
 `ata analyze` 已合并进 `gen`（等同 `gen -f -p --meta-only`，仅写元操作）。
 
@@ -57,22 +59,37 @@ reports/html
 | assert | assert |
 | set_var | setVar |
 
-## CLI
+## 产物分区与对比
 
-```bash
-# 一步：元操作 + 测试脚本 + 元素库（须 DEEPSEEK_API_KEY）
-pnpm ata gen -f <功能名> -p <被测前端源码根>
+```text
+artifacts/<base>_<ts>/          # 例：feat_e997aee9_2026-10-18T08-51-19-425Z
+  feature.yaml                 # current：当前路径描述（元操作 / operations / flows）
+  v1/                          # 基线快照（与 feature.yaml 同目录）
+    feature.yaml
+    suite.yaml
+    generated.yaml             # 可选
+  baseline-manifest.yaml       # 基线列表与 latest 指针
+  compare/
+    latest-diff.yaml             # 结构化差异（baseline vs current）
+    diff-<ts>.yaml
+    latest-report.yaml           # LLM 根据 diff 生成的对比报告
+    latest-report.md             # 报告可读版
+    report-<ts>.yaml / .md
 
-# 仅根据已有元操作重新生成脚本
-pnpm ata gen -i artifacts/<slug>/feature.yaml
-
-# 执行
-pnpm ata auth
-pnpm ata test -c cases/generated/<slug>/suite.yaml
-pnpm report
+cases/generated/<base>_<ts>/suite.yaml   # 当前可执行脚本（再次 gen 覆盖同目录）
 ```
 
-排障：`artifacts/<slug>/llm.raw.json`（分析）、`gen.llm.raw.json`（生成 suite）。
+**推荐节奏**：`gen` → `test` 全绿 → 改源码或手改 `feature.yaml` → 再 `gen`（若已有元操作且尚无 v1，CLI 会询问是否存档 v1）→ `compare`。
+
+也可在首版跑通后手动 `snapshot -l v1`；`gen` 询问存档与 snapshot 等价。
+
+对比流水线：**`v1/` 基线 vs 功能目录根部 current**（`feature.yaml` + `cases/generated/.../suite.yaml`）→ `diff.yaml` → LLM → `report.yaml`。默认对比标签为 **v1**。diff 以 **operations → flows → meta_ops（按 id 对齐）** 为主；`suite` 段按 `case.id` 辅助核对编译漂移。
+
+## CLI
+
+**完整命令与选项见仓库根目录 [README.md](../README.md)。**
+
+排障：`artifacts/<base>_<ts>/llm.raw.json`（分析）、`gen.llm.raw.json`（生成 suite）。
 
 ## 实现
 
