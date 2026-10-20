@@ -25,6 +25,9 @@ import { FeatureArtifactSchema } from '../core/schema.js';
 import { runCompare } from '../compare/runCompare.js';
 import { readBaselineManifest, snapshotBaseline } from '../compare/snapshot.js';
 import { maybePromptArchiveV1BeforeGen } from './promptArchiveBeforeGen.js';
+import { retrieveFeatureCode } from '../analyzer/retrieve.js';
+import { extractFieldFacts } from '../analyzer/staticExtract.js';
+import { stringify as stringifyYaml } from 'yaml';
 import { LlmHandoffPendingError } from '../analyzer/deepseekClient.js';
 
 dotenv.config();
@@ -117,6 +120,23 @@ program
     console.log(`\n✓ 元操作: ${out}`);
     printArtifactSummary(artifact);
     console.log(`  下一步: pnpm ata gen -f ${opts.feature}  或  pnpm ata gen -i ${out}`);
+  });
+
+program
+  .command('facts')
+  .description('静态提取功能目录下的字段事实（fields / queryFields），不调用 LLM，YAML 输出到 stdout')
+  .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)
+  .requiredOption('-d, --dir <path>', '功能源码目录，读取该目录下完整文件')
+  .action(async (opts: { project: string; dir: string }) => {
+    const { snippets } = await retrieveFeatureCode({
+      feature: opts.dir,
+      projectRoot: opts.project,
+      featureDir: opts.dir,
+    });
+    const facts = extractFieldFacts(snippets);
+    // stdout 只放 YAML，计数走 stderr，方便管道重定向
+    process.stdout.write(stringifyYaml({ field_facts: facts }));
+    console.error(`字段总数: ${facts.length}`);
   });
 
 program

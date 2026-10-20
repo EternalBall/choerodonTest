@@ -3,6 +3,7 @@ import type { FeatureArtifact } from '../core/schema.js';
 import { loadPlaybooks } from '../knowledge/loadPlaybooks.js';
 import { compileMetaOpsAndFlows } from './compileFlows.js';
 import { retrieveFeatureCode } from './retrieve.js';
+import { extractFieldFacts } from './staticExtract.js';
 import { llmAnalyzeFeature } from './llmAnalyze.js';
 
 export type AnalyzeOptions = {
@@ -33,6 +34,8 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
     maxTotalChars: opts.featureDir ? FEATURE_DIR_MAX_TOTAL_CHARS : undefined,
   });
   const artifact = compileMetaOpsAndFlows(raw, { force: true });
+  // 字段事实由 AST 确定性提取，不让 LLM 参与，保证同源码两次分析结果一致
+  artifact.field_facts = extractFieldFacts(snippets);
   logger.info(
     {
       feature: opts.feature,
@@ -41,6 +44,7 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
       operations: artifact.operations.length,
       meta_ops: artifact.meta_ops?.length ?? 0,
       flows: artifact.flows?.length ?? 0,
+      field_facts: artifact.field_facts.length,
       playbooks: playbooks.map((p) => p.id),
     },
     'LLM 分析完成并已编译 flows',

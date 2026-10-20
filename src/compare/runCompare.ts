@@ -117,7 +117,7 @@ export async function runCompare(opts: {
   await writeYamlFile(reportFile, report);
   await writeYamlFile(latestReportFile, report);
 
-  const reportMd = renderReportMarkdown(report);
+  const reportMd = renderReportMarkdown(report, diffDoc.fields);
   const reportMdFile = path.join(compareDir, 'latest-report.md');
   await fs.writeFile(path.join(compareDir, `report-${stamp}.md`), reportMd, 'utf8');
   await fs.writeFile(reportMdFile, reportMd, 'utf8');
