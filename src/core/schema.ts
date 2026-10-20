@@ -435,6 +435,8 @@ export const FeatureArtifactSchema = z.object({
   /** 新产物仅为 deepseek；heuristic 仅兼容读取历史 artifacts */
   analyzer: z.enum(['deepseek', 'heuristic']).optional(),
   model: z.string().optional(),
+  /** analyze 按源码 import 选中的 playbook id；gen 沿用 */
+  playbooks: z.array(z.string()).optional(),
 });
 
 export type FeatureArtifact = z.infer<typeof FeatureArtifactSchema>;
@@ -460,6 +462,7 @@ export const LlmFeatureOutputSchema = FeatureArtifactSchema.omit({
   sources: true,
   analyzer: true,
   model: true,
+  playbooks: true,
 }).extend({
   confidence: z.number().min(0).max(1),
 });

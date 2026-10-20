@@ -1,0 +1,149 @@
+# Playbook 按需注入映射（loadPlaybooks.selectPlaybooks 读取）
+# 按被测源码的 import 来源选手册：
+#   from 'choerodon-ui/pro' 或 'choerodon-ui/pro/lib/<dir>'  → pro 映射
+#   from 'choerodon-ui'     或 'choerodon-ui/lib/<dir>'      → legacy 映射
+# 组件键按「去掉连字符、忽略大小写」匹配导出名或 lib 目录名（DatePicker = date-picker）。
+# 导出名来源：choerodon-ui@06b0d84 components-pro/index.tsx、components/index.tsx。
+
+# 通用手册：与组件库无关，始终注入
+always:
+  - page-states
+  - api-binding
+  - row-action
+  - choerodon-create-detail
+
+# 源码里没识别出任何 choerodon-ui 导入时（如经业务封装组件引入）注入的兜底集
+fallback:
+  - choerodon-table
+  - choerodon-table-filterBar
+  - choerodon-select
+  - choerodon-lov
+  - choerodon-modal
+
+# 源码出现这些 DataSet 字段属性时，视同使用对应 Pro 组件
+dataset_hints:
+  lovCode: Lov
+  lookupCode: Select
+
+pro:
+  Table: [choerodon-table, choerodon-table-filterBar, choerodon-table-queryBar, choerodon-table-row-edit]
+  Pagination: [choerodon-table]
+  Lov: [choerodon-lov]
+  Select: [choerodon-select]
+  Modal: [choerodon-modal]
+  Form: [choerodon-form]
+  Output: [choerodon-form]
+  Button: [choerodon-form]
+  Row: [choerodon-form]
+  Col: [choerodon-form]
+  DatePicker: [choerodon-date-picker]
+  DateTimePicker: [choerodon-date-time-ext]
+  TimePicker: [choerodon-date-time-ext]
+  WeekPicker: [choerodon-period-picker]
+  MonthPicker: [choerodon-period-picker]
+  QuarterPicker: [choerodon-period-picker]
+  YearPicker: [choerodon-period-picker]
+  Dropdown: [choerodon-row-dropdown]
+  Menu: [choerodon-row-dropdown]
+  Tabs: [choerodon-tabs]
+  Tree: [choerodon-tree]
+  TreeSelect: [choerodon-tree]
+  Cascader: [choerodon-tree]
+  Upload: [choerodon-upload]
+  Attachment: [choerodon-upload]
+  TextField: [choerodon-text-input]
+  TextArea: [choerodon-text-input]
+  Password: [choerodon-text-input]
+  EmailField: [choerodon-text-input]
+  UrlField: [choerodon-text-input]
+  IntlField: [choerodon-text-input]
+  SecretField: [choerodon-text-input]
+  AutoComplete: [choerodon-text-input]
+  Mentions: [choerodon-text-input]
+  NumberField: [choerodon-number-input]
+  Currency: [choerodon-number-input]
+  PercentField: [choerodon-number-input]
+  Range: [choerodon-number-input]
+  CheckBox: [choerodon-check-radio-switch]
+  Radio: [choerodon-check-radio-switch]
+  Switch: [choerodon-check-radio-switch]
+  SelectBox: [choerodon-check-radio-switch]
+  Segmented: [choerodon-check-radio-switch]
+  ColorPicker: [choerodon-picker-misc]
+  IconPicker: [choerodon-picker-misc]
+  Rate: [choerodon-picker-misc]
+  Transfer: [choerodon-transfer-screening]
+  Screening: [choerodon-transfer-screening]
+  PerformanceTable: [choerodon-performance-table]
+  Board: [choerodon-performance-table]
+  RichText: [choerodon-rich-content]
+  CodeArea: [choerodon-rich-content]
+  Picture: [choerodon-rich-content]
+  Typography: [choerodon-rich-content]
+  OverflowTip: [choerodon-rich-content]
+  message: [choerodon-feedback]
+  notification: [choerodon-feedback]
+  Spin: [choerodon-feedback]
+  Progress: [choerodon-feedback]
+  Skeleton: [choerodon-feedback]
+  Tooltip: [choerodon-feedback]
+
+legacy:
+  Input: [choerodon-legacy-input]
+  InputNumber: [choerodon-legacy-input]
+  AutoComplete: [choerodon-legacy-input]
+  Select: [choerodon-legacy-select]
+  Cascader: [choerodon-legacy-select]
+  TreeSelect: [choerodon-legacy-select]
+  Checkbox: [choerodon-legacy-check]
+  Radio: [choerodon-legacy-check]
+  Switch: [choerodon-legacy-check]
+  Rate: [choerodon-legacy-check]
+  Slider: [choerodon-legacy-check]
+  DatePicker: [choerodon-legacy-date]
+  TimePicker: [choerodon-legacy-date]
+  Calendar: [choerodon-legacy-date]
+  Table: [choerodon-legacy-table]
+  Pagination: [choerodon-legacy-table]
+  List: [choerodon-legacy-table]
+  Form: [choerodon-legacy-form-button]
+  Button: [choerodon-legacy-form-button]
+  IconSelect: [choerodon-legacy-form-button]
+  Icon: [choerodon-legacy-form-button]
+  Tree: [choerodon-legacy-tree-transfer]
+  Transfer: [choerodon-legacy-tree-transfer]
+  Upload: [choerodon-legacy-tree-transfer]
+  ImageCrop: [choerodon-legacy-tree-transfer]
+  Modal: [choerodon-legacy-overlay]
+  Popconfirm: [choerodon-legacy-overlay]
+  Popover: [choerodon-legacy-overlay]
+  Tooltip: [choerodon-legacy-overlay]
+  Dropdown: [choerodon-legacy-overlay]
+  message: [choerodon-legacy-feedback]
+  notification: [choerodon-legacy-feedback]
+  Alert: [choerodon-legacy-feedback]
+  Result: [choerodon-legacy-feedback]
+  Spin: [choerodon-legacy-feedback]
+  Progress: [choerodon-legacy-status]
+  Skeleton: [choerodon-legacy-status]
+  Badge: [choerodon-legacy-status]
+  Tag: [choerodon-legacy-status]
+  Avatar: [choerodon-legacy-status]
+  Tabs: [choerodon-legacy-nav]
+  Menu: [choerodon-legacy-nav]
+  Steps: [choerodon-legacy-nav]
+  Breadcrumb: [choerodon-legacy-nav]
+  Anchor: [choerodon-legacy-nav]
+  Layout: [choerodon-legacy-layout]
+  Row: [choerodon-legacy-layout]
+  Col: [choerodon-legacy-layout]
+  Card: [choerodon-legacy-layout]
+  Collapse: [choerodon-legacy-layout]
+  Divider: [choerodon-legacy-layout]
+  Timeline: [choerodon-legacy-display]
+  Statistic: [choerodon-legacy-display]
+  Carousel: [choerodon-legacy-display]
+  BarCode: [choerodon-legacy-display]
+  WaterMark: [choerodon-legacy-display]
+  Affix: [choerodon-legacy-misc]
+  BackTop: [choerodon-legacy-misc]

@@ -12,7 +12,8 @@ import {
 import { listActions } from '../keywords/index.js';
 import {
   formatPlaybooksForPrompt,
-  loadPlaybooks,
+  loadPlaybooksByIds,
+  loadPlaybooksForSources,
 } from '../knowledge/loadPlaybooks.js';
 
 const ALLOWED_ACTIONS = new Set(listActions());
@@ -247,7 +248,10 @@ export async function llmGenSuite(opts: {
   const { artifact, baseURL } = opts;
   const ns = featureOutputSlug(artifact.feature);
   const allowed = listActions();
-  const playbooks = await loadPlaybooks();
+  // 沿用 analyze 选定的手册；历史 artifact 无记录时按 fallback 规则选
+  const playbooks = artifact.playbooks?.length
+    ? await loadPlaybooksByIds(artifact.playbooks)
+    : await loadPlaybooksForSources([]);
   const playbookBlock = playbooks.length
     ? formatPlaybooksForPrompt(playbooks, 24_000)
     : '';
