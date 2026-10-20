@@ -10,6 +10,7 @@ import {
 import { loadEnvConfig } from '../core/config.js';
 import {
   featureArtifactFile,
+  featureSuiteFile,
   featureOutputSlug,
   resolveFeatureArtifactFile,
   resolveFeatureContext,
@@ -23,10 +24,32 @@ import { listActions } from '../keywords/index.js';
 import { loadKnowledgeFeature } from '../knowledge/loadFeature.js';
 import { FeatureArtifactSchema } from '../core/schema.js';
 import { runCompare } from '../compare/runCompare.js';
+import {
+  ataRoot,
+  confirmAtaVersion,
+  listAtaVersions,
+  loadAtaVersion,
+  nextAtaVersion,
+  readAtaRootManifest,
+} from '../compare/ataStore.js';
+import { diffFeatureArtifacts } from '../compare/diffArtifact.js';
 import { readBaselineManifest, snapshotBaseline } from '../compare/snapshot.js';
 import { maybePromptArchiveV1BeforeGen } from './promptArchiveBeforeGen.js';
+import { retrieveFeatureCode } from '../analyzer/retrieve.js';
+import { extractFieldFacts } from '../analyzer/staticExtract.js';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import readline from 'node:readline';
+import { LlmHandoffPendingError } from '../analyzer/deepseekClient.js';
+import { compileMetaOpsAndFlows } from '../analyzer/compileFlows.js';
 
 dotenv.config();
+
+/**
+ * 被测前端源码根默认值：本仓库放在 /data/pdl/code/choerodonTest，
+ * 被测代码在 /data/pdl/repos/pdl-front，故相对路径为 ../../repos/pdl-front。
+ * 可用 .env 的 TARGET_PROJECT 或命令行 -p 覆盖。
+ */
+const TARGET_PROJECT_DEFAULT = process.env.TARGET_PROJECT || '../../repos/pdl-front';
 
 async function ensureDirs() {
   for (const d of [
@@ -90,12 +113,15 @@ program
   .command('analyze')
   .description('已合并到 gen；仅写出元操作文件（等同 gen -f -p --meta-only）')
   .requiredOption('-f, --feature <name>', '功能名，如 Material / 物料维护')
-  .option('-p, --project <path>', '被测前端源码根目录', process.env.TARGET_PROJECT || '.')
-  .action(async (opts: { feature: string; project: string }) => {
+  .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)
+  .option('-d, --dir <path>', '功能源码目录，读取该目录下完整文件，优先于关键词检索')
+  .action(async (opts: { feature: string; project: string; dir?: string }) => {
     await ensureDirs();
     console.warn('\n提示: analyze 已合并到 gen，推荐: pnpm ata gen -f ... -p ...\n');
     const outputSlug = await resolveOutputSlugForFeature(opts.feature);
-    const artifact = await analyzeFeatureFromSource(opts.feature, opts.project);
+    const artifact = await analyzeFeatureFromSource(opts.feature, opts.project, {
+      featureDir: opts.dir,
+    });
     const result = await runGenPipeline({
       artifact,
       outputSlug,
@@ -109,6 +135,40 @@ program
   });
 
 program
+  .command('facts')
+  .description('静态提取功能目录下的字段事实（fields / queryFields），不调用 LLM，YAML 输出到 stdout')
+  .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)
+  .requiredOption('-d, --dir <path>', '功能源码目录，读取该目录下完整文件')
+  .action(async (opts: { project: string; dir: string }) => {
+    const { snippets } = await retrieveFeatureCode({
+      feature: opts.dir,
+      projectRoot: opts.project,
+      featureDir: opts.dir,
+    });
+    const facts = extractFieldFacts(snippets);
+    // stdout 只放 YAML，计数走 stderr，方便管道重定向
+    process.stdout.write(stringifyYaml({ field_facts: facts }));
+    console.error(`字段总数: ${facts.length}`);
+  });
+
+program
+  .command('recompile')
+  .description(
+    '用当前编译器强制重编 feature.yaml 的 meta_ops/flows（编译规则升级后使用；不调用 LLM，会覆盖已有 flows，原文件备份为 .bak）',
+  )
+  .requiredOption('-i, --input <file>', 'artifacts/<slug>/feature.yaml')
+  .action(async (opts: { input: string }) => {
+    const raw = await fs.readFile(opts.input, 'utf8');
+    const artifact = FeatureArtifactSchema.parse(parseYaml(raw));
+    const next = compileMetaOpsAndFlows(artifact, { force: true });
+    await fs.writeFile(`${opts.input}.bak`, raw, 'utf8');
+    await fs.writeFile(opts.input, stringifyYaml(next), 'utf8');
+    console.log(
+      `✓ 已重编: ${opts.input}（meta_ops ${next.meta_ops?.length ?? 0}，flows ${next.flows?.length ?? 0}；备份 ${opts.input}.bak）`,
+    );
+  });
+
+program
   .command('gen')
   .description(
     '生成：源码或已有元操作 → artifacts/feature.yaml + cases/generated/suite.yaml + elements（一步完成）',
@@ -117,9 +177,10 @@ program
   .option(
     '-p, --project <path>',
     '被测前端源码根；与 -f 合用则从源码分析并写出元操作，再生成测试脚本',
-    process.env.TARGET_PROJECT,
+    TARGET_PROJECT_DEFAULT,
   )
   .option('-i, --input <file>', '已有 artifacts/<slug>/feature.yaml，仅重新生成测试脚本')
+  .option('-d, --dir <path>', '功能源码目录，读取该目录下完整文件，优先于关键词检索')
   .option('--meta-only', '只写元操作文件，不生成 suite（需 -f 且 -p）')
   .option('--from-knowledge', '与 -f 同义，优先 knowledge/features')
   .option('--archive-v1', '已有元操作时，不询问直接存档 v1（尚无 v1 时）')
@@ -133,6 +194,7 @@ program
       metaOnly?: boolean;
       archiveV1?: boolean;
       noArchivePrompt?: boolean;
+      dir?: string;
     }) => {
       await ensureDirs();
       const { parse } = await import('yaml');
@@ -143,7 +205,9 @@ program
 
       if (opts.feature && opts.project) {
         outputSlug = await resolveOutputSlugForFeature(opts.feature);
-        artifact = await analyzeFeatureFromSource(opts.feature, opts.project);
+        artifact = await analyzeFeatureFromSource(opts.feature, opts.project, {
+          featureDir: opts.dir,
+        });
         writeArtifact = true;
       } else if (opts.input) {
         artifact = FeatureArtifactSchema.parse(parse(await fs.readFile(opts.input, 'utf8')));
@@ -222,13 +286,16 @@ program
   .description('执行 suite YAML（逐步截图 + HTML 报告）')
   .option('-c, --case <file>', 'suite yaml')
   .option('--skip-auth', '跳过登录态（本地 demo）')
-  .action(async (opts: { case?: string; skipAuth?: boolean }) => {
+  .option('-g, --grep <pattern>', '只运行标题匹配的用例（正则，匹配 "<case.id> <title>"），如先只跑只读用例')
+  .action(async (opts: { case?: string; skipAuth?: boolean; grep?: string }) => {
     await ensureDirs();
     const caseFile = opts.case || path.join(PATHS.cases, 'example-smoke.yaml');
     process.env.ATA_CASE_FILE = path.resolve(caseFile);
     if (opts.skipAuth) process.env.SKIP_AUTH = '1';
     console.log(`执行: ${process.env.ATA_CASE_FILE}`);
-    const code = await runPlaywright([]);
+    // 正则放进双引号；内部双引号转义，避免 shell:true 下被拆分
+    const grepArgs = opts.grep ? ['--grep', `"${opts.grep.replace(/"/g, '\\"')}"`] : [];
+    const code = await runPlaywright(grepArgs);
     if (code === 0) console.log('\n✓ 完成: pnpm report');
     process.exit(code);
   });
@@ -277,11 +344,15 @@ program
     '-f, --feature <name>',
     '功能名 / slug / artifacts/<slug> 目录 / feature.yaml 路径',
   )
-  .option('-b, --baseline <label>', '基线标签（默认 v1）')
+  .option('-b, --baseline <label>', '基线标签（默认 v1；配合 --ata 时为版本号如 V2，默认最新）')
+  .option('--ata <featureDir>', '基线改取目标项目该功能目录下 ata/ 的已确认版本（配合 -p）')
+  .option('-p, --project <path>', '被测前端源码根目录（仅 --ata 使用）', TARGET_PROJECT_DEFAULT)
   .option('--list', '列出已有基线')
   .action(async (opts: {
     feature: string;
     baseline?: string;
+    ata?: string;
+    project: string;
     list?: boolean;
   }) => {
     await ensureDirs();
@@ -303,6 +374,7 @@ program
     const result = await runCompare({
       feature: opts.feature,
       baselineLabel: opts.baseline,
+      ata: opts.ata ? { projectRoot: opts.project, featureDir: opts.ata } : undefined,
     });
     console.log(`\n✓ 差异 YAML: ${result.latestDiffFile}`);
     console.log(`  归档: ${result.diffFile}`);
@@ -312,7 +384,100 @@ program
     console.log(`  路径逻辑变更: ${result.logicChanged ? '是' : '否'}`);
   });
 
+function askYesNo(question: string): Promise<boolean> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (ans) => {
+      rl.close();
+      resolve(/^y(es)?$/i.test(ans.trim()));
+    });
+  });
+}
+
+program
+  .command('confirm')
+  .description(
+    '人工确认：把 current 分析结果备份为目标项目功能目录下 ata/V<n>/（版本不可变，不碰目标项目 git）',
+  )
+  .requiredOption('-f, --feature <name>', '功能名')
+  .requiredOption('-d, --dir <path>', '功能源码目录（相对项目根或绝对路径），ata/ 建在其下')
+  .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)
+  .option('-n, --note <text>', '备注写入 manifest')
+  .option('-y, --yes', '跳过人工确认询问')
+  .action(
+    async (opts: { feature: string; dir: string; project: string; note?: string; yes?: boolean }) => {
+      const slug = await resolveOutputSlugForFeature(opts.feature);
+      const artifactFile = featureArtifactFile(slug);
+      try {
+        await fs.access(artifactFile);
+      } catch {
+        throw new Error(`缺少当前元操作: ${artifactFile}，请先 pnpm ata gen -f ${opts.feature} -p ...`);
+      }
+      const suiteFile = featureSuiteFile(slug);
+      const root = ataRoot(opts.project, opts.dir);
+      const version = await nextAtaVersion(root);
+      console.log(`目标目录: ${path.join(root, version)}`);
+      console.log(`新版本号: ${version}`);
+
+      const versions = await listAtaVersions(root);
+      if (versions.length) {
+        // 只打印条数统计；与上一版本的字段级差异让人确认前心里有数
+        const prev = await loadAtaVersion(root, versions[versions.length - 1]);
+        const cur = FeatureArtifactSchema.parse(parseYaml(await fs.readFile(artifactFile, 'utf8')));
+        const d = diffFeatureArtifacts(prev.artifact, cur);
+        const count = (t: string) => d.field_facts.filter((x) => x.change === t).length;
+        console.log(
+          `与 ${prev.version} 的字段差异: 新增 ${count('added')} / 删除 ${count('removed')} / 变更 ${count('changed')}`,
+        );
+      } else {
+        console.log('尚无历史版本，将作为首个版本。');
+      }
+
+      if (!opts.yes) {
+        if (!(await askYesNo('确认生成该版本？[y/N] '))) {
+          console.log('已取消。');
+          return;
+        }
+      }
+      const res = await confirmAtaVersion({
+        projectRoot: opts.project,
+        featureDir: opts.dir,
+        slug,
+        feature: opts.feature,
+        artifactFile,
+        suiteFile,
+        note: opts.note,
+      });
+      console.log(`\n✓ 已生成 ${res.version}: ${res.dir}`);
+    },
+  );
+
+program
+  .command('versions')
+  .description('列出目标项目功能目录下 ata/ 的已确认版本')
+  .requiredOption('-d, --dir <path>', '功能源码目录')
+  .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)
+  .action(async (opts: { dir: string; project: string }) => {
+    const root = ataRoot(opts.project, opts.dir);
+    const versions = await listAtaVersions(root);
+    if (!versions.length) {
+      console.log(`尚无版本: ${root}，请先 pnpm ata confirm`);
+      return;
+    }
+    const manifest = await readAtaRootManifest(root);
+    console.log(`ata: ${root}\n最新版本: ${manifest?.latest ?? versions[versions.length - 1]}`);
+    for (const v of versions) {
+      const m = manifest?.versions?.[v];
+      console.log(`  - ${v}: ${m?.confirmed_at ?? '（无记录）'}${m?.note ? ` — ${m.note}` : ''}`);
+    }
+  });
+
 program.parseAsync(process.argv).catch((err) => {
+  // handoff 模式：LLM 请求已落盘等待外部 agent 应答，属正常暂停，退出码 3 供调用方识别
+  if (err instanceof LlmHandoffPendingError) {
+    console.error(`\n⏸ ${err.message}`);
+    process.exit(3);
+  }
   console.error(err);
   process.exit(1);
 });

@@ -12,6 +12,7 @@ import { buildDiffYaml } from './buildDiffYaml.js';
 import { diffFeatureArtifacts } from './diffArtifact.js';
 import { diffSuites } from './diffSuite.js';
 import { llmSummarizeDiff } from './llmSummarizeDiff.js';
+import { ataRoot, loadAtaVersion, readAtaRootManifest } from './ataStore.js';
 import { featureCompareDir } from './paths.js';
 import { artifactLogicChanged } from './diffArtifact.js';
 import { renderReportMarkdown } from './renderReportMarkdown.js';
@@ -25,6 +26,11 @@ import {
 export async function runCompare(opts: {
   feature: string;
   baselineLabel?: string;
+  /**
+   * 指定后基线取目标项目功能目录下 ata/ 的已确认版本（baselineLabel 此时表示 V2 等版本号，缺省最新），
+   * 而不是 artifacts/<slug>/v1。未指定时行为与原来完全一致。
+   */
+  ata?: { projectRoot: string; featureDir: string };
 }): Promise<{
   diffFile: string;
   latestDiffFile: string;
@@ -36,10 +42,27 @@ export async function runCompare(opts: {
 }> {
   const ctx = await resolveFeatureContext(opts.feature);
   const { slug, artifactFile: currentFeature } = ctx;
-  const label = await resolveBaselineLabel(slug, opts.baselineLabel);
 
-  const baselineFeature = await baselineFeatureFile(slug, label);
-  const baselineSuite = await baselineSuiteFile(slug, label);
+  // 基线来源适配：ata 版本映射成与 v1 基线相同的 (label, feature, suite, createdAt) 输入
+  let label: string;
+  let baselineFeature: string;
+  let baselineSuite: string;
+  let createdAt: string | undefined;
+  let baselineSource: { type: 'ata'; path: string; version: string } | undefined;
+  if (opts.ata) {
+    const root = ataRoot(opts.ata.projectRoot, opts.ata.featureDir);
+    const loaded = await loadAtaVersion(root, opts.baselineLabel);
+    label = loaded.version;
+    baselineFeature = loaded.featureFile;
+    baselineSuite = path.join(loaded.dir, 'suite.yaml');
+    baselineSource = { type: 'ata', path: root, version: loaded.version };
+    createdAt = (await readAtaRootManifest(root))?.versions?.[label]?.confirmed_at;
+  } else {
+    label = await resolveBaselineLabel(slug, opts.baselineLabel);
+    baselineFeature = await baselineFeatureFile(slug, label);
+    baselineSuite = await baselineSuiteFile(slug, label);
+    createdAt = (await readBaselineManifest(slug)).baselines[label]?.createdAt;
+  }
   const currentSuite = featureSuiteFile(slug);
 
   const beforeArtifact = FeatureArtifactSchema.parse(
@@ -72,14 +95,12 @@ export async function runCompare(opts: {
     suiteDiff.changed.length > 0;
   const suiteOnlyDrift = !logicChanged && suiteChanged;
 
-  const manifest = await readBaselineManifest(slug);
-  const createdAt = manifest.baselines[label]?.createdAt;
-
   const diffDoc = buildDiffYaml({
     feature: afterArtifact.feature || opts.feature,
     slug,
     baselineLabel: label,
     baselineCreatedAt: createdAt,
+    baselineSource,
     beforeArtifact,
     afterArtifact,
     artifactDiff,
@@ -88,7 +109,7 @@ export async function runCompare(opts: {
     suiteOnlyDrift,
     sides: {
       baseline: {
-        role: 'v1',
+        role: baselineSource ? 'ata' : 'v1',
         feature: baselineFeature,
         suite: beforeSuite ? baselineSuite : undefined,
       },
@@ -117,7 +138,7 @@ export async function runCompare(opts: {
   await writeYamlFile(reportFile, report);
   await writeYamlFile(latestReportFile, report);
 
-  const reportMd = renderReportMarkdown(report);
+  const reportMd = renderReportMarkdown(report, diffDoc.fields);
   const reportMdFile = path.join(compareDir, 'latest-report.md');
   await fs.writeFile(path.join(compareDir, `report-${stamp}.md`), reportMd, 'utf8');
   await fs.writeFile(reportMdFile, reportMd, 'utf8');

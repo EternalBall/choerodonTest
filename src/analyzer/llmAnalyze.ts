@@ -330,9 +330,11 @@ ${JSON_SCHEMA_HINT}`;
 export async function llmAnalyzeFeature(opts: {
   feature: string;
   snippets: CodeSnippet[];
+  /** prompt 中代码总字符上限；缺省沿用 formatSnippetsForPrompt 默认值 */
+  maxTotalChars?: number;
   playbooks?: PlaybookDoc[];
 }): Promise<FeatureArtifact> {
-  const codeBlock = formatSnippetsForPrompt(opts.snippets);
+  const codeBlock = formatSnippetsForPrompt(opts.snippets, opts.maxTotalChars);
 
   if (!codeBlock.trim()) {
     throw new Error('没有检索到可分析的源码，请检查 -p 路径');

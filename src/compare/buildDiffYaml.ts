@@ -1,5 +1,6 @@
 import type { FeatureArtifact } from '../core/schema.js';
 import type { ArtifactDiff } from './diffArtifact.js';
+import type { FieldDiffItem, ListDiffItem } from './diffFields.js';
 import type { SuiteCaseDiff } from './diffSuite.js';
 import type { FlowChainDiff, ResolvedFlowStep } from './resolveFlow.js';
 import type { OperationSchema } from '../core/schema.js';
@@ -11,7 +12,7 @@ type Operation = z.infer<typeof OperationSchema>;
 export type DiffFlowStep = Omit<ResolvedFlowStep, 'index'>;
 
 export type CompareDiffDocument = {
-  diff_version: '2';
+  diff_version: '3';
   meta: {
     feature: string;
     slug: string;
@@ -21,11 +22,13 @@ export type CompareDiffDocument = {
     compare_axis: 'full_flow';
     baseline_label: string;
     baseline_created_at?: string;
+    /** 基线来自 ata/ 版本时记录来源（ata 根目录与版本号）；v1 基线流程不出现 */
+    baseline_source?: { type: 'ata'; path: string; version: string };
     generated_at: string;
     logic_changed: boolean;
     suite_only_drift: boolean;
     sides: {
-      baseline: { role: 'v1'; feature: string; suite?: string };
+      baseline: { role: 'v1' | 'ata'; feature: string; suite?: string };
       current: { role: 'current'; feature: string; suite?: string };
     };
   };
@@ -54,6 +57,13 @@ export type CompareDiffDocument = {
     field_rules?: boolean;
     validations?: boolean;
   };
+  /** 字段级变更（仅有变更时出现）：字段事实 + 字段规则/校验/页面状态逐项 diff */
+  fields?: {
+    field_facts: FieldDiffItem[];
+    field_rules: ListDiffItem[];
+    validations: ListDiffItem[];
+    page_states: ListDiffItem[];
+  };
   /** 编译用例辅助（不作为逻辑主结论） */
   suite?: {
     added: string[];
@@ -76,6 +86,7 @@ export function buildDiffYaml(opts: {
   slug: string;
   baselineLabel: string;
   baselineCreatedAt?: string;
+  baselineSource?: { type: 'ata'; path: string; version: string };
   beforeArtifact: FeatureArtifact;
   afterArtifact: FeatureArtifact;
   artifactDiff: ArtifactDiff;
@@ -94,7 +105,7 @@ export function buildDiffYaml(opts: {
   }));
 
   const doc: CompareDiffDocument = {
-    diff_version: '2',
+    diff_version: '3',
     meta: {
       feature: opts.feature,
       slug: opts.slug,
@@ -102,6 +113,7 @@ export function buildDiffYaml(opts: {
       compare_axis: 'full_flow',
       baseline_label: opts.baselineLabel,
       baseline_created_at: opts.baselineCreatedAt,
+      ...(opts.baselineSource ? { baseline_source: opts.baselineSource } : {}),
       generated_at: new Date().toISOString(),
       logic_changed: opts.logicChanged,
       suite_only_drift: opts.suiteOnlyDrift,
@@ -137,6 +149,21 @@ export function buildDiffYaml(opts: {
   if (opts.artifactDiff.field_rules.changed) supporting.field_rules = true;
   if (opts.artifactDiff.validations.changed) supporting.validations = true;
   if (Object.keys(supporting).length) doc.supporting = supporting;
+
+  const d = opts.artifactDiff;
+  if (
+    d.field_facts.length ||
+    d.field_rules_items.length ||
+    d.validations_items.length ||
+    d.page_states_items.length
+  ) {
+    doc.fields = {
+      field_facts: d.field_facts,
+      field_rules: d.field_rules_items,
+      validations: d.validations_items,
+      page_states: d.page_states_items,
+    };
+  }
 
   if (opts.suiteDiff) {
     const s = opts.suiteDiff;

@@ -8,6 +8,8 @@ import { interpolateDeep } from '../src/keywords/vars.js';
 import { TableNoDataError } from '../src/keywords/tableAssert.js';
 
 // 用例 YAML 中可用 ${ENV.ATA_RUN_ID} / ${vars.xxx}
+// 自动化落库数据统一前缀（便于识别与人工清理）；可用 .env 的 TEST_DATA_PREFIX 覆盖
+if (!process.env.TEST_DATA_PREFIX) process.env.TEST_DATA_PREFIX = 'autotest';
 if (!process.env.ATA_RUN_ID) {
   process.env.ATA_RUN_ID = String(Date.now());
 }

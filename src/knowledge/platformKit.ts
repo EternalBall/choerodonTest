@@ -130,6 +130,12 @@ export async function buildFeatureElementLib(
     }
   }
 
+  // 人工校正（knowledge/features/<slug>/elements.yaml）优先级最高：
+  // 动机——LLM 的 elements_hints 可能带错的 text/css 组合，不应盖掉人工核对过的定位
+  for (const [key, def] of Object.entries(overlay)) {
+    merged[key] = { ...def };
+  }
+
   return merged;
 }
 

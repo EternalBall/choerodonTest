@@ -372,6 +372,40 @@ export const ReviewSuggestionsSchema = z.object({
   dom_candidates: z.array(DomCandidateSchema).optional(),
 });
 
+/**
+ * 字段属性事实值：字面量原样保留；枚举成员取成员名；无法静态求值的表达式记 {expr}；
+ * 嵌套对象字面量（如 lovPara）递归。
+ */
+export type FactValue =
+  | string
+  | number
+  | boolean
+  | null
+  | FactValue[]
+  | { expr: string }
+  | { [key: string]: FactValue };
+
+export const FactValueSchema: z.ZodType<FactValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(FactValueSchema),
+    z.record(FactValueSchema),
+  ]),
+);
+
+/** 静态提取的字段事实：由 AST 确定性产出，不经过 LLM */
+export const FieldFactSchema = z.object({
+  /** 所在最近的变量名/函数名，如 tableDS；取不到为 (anonymous) */
+  ds: z.string(),
+  group: z.enum(['fields', 'queryFields']),
+  file: z.string(),
+  name: z.string(),
+  attrs: z.record(FactValueSchema),
+});
+
 export const FeatureArtifactSchema = z.object({
   feature: z.string(),
   entry: z.object({
@@ -390,6 +424,8 @@ export const FeatureArtifactSchema = z.object({
   page_states: z.array(PageStateSchema).optional(),
   field_rules: z.array(FieldRuleSchema).optional(),
   validations: z.array(ValidationRuleSchema).optional(),
+  /** 源码静态提取的字段事实（确定性，analyze 后写入；旧产物缺省） */
+  field_facts: z.array(FieldFactSchema).optional(),
   review_suggestions: ReviewSuggestionsSchema.optional(),
   sources: z.array(z.string()).default([]),
   confidence: z.number().min(0).max(1).default(0.5),
@@ -403,6 +439,7 @@ export const FeatureArtifactSchema = z.object({
 
 export type FeatureArtifact = z.infer<typeof FeatureArtifactSchema>;
 export type ElementHint = z.infer<typeof ElementHintSchema>;
+export type FieldFact = z.infer<typeof FieldFactSchema>;
 export type PageState = z.infer<typeof PageStateSchema>;
 export type FieldRule = z.infer<typeof FieldRuleSchema>;
 export type ValidationRule = z.infer<typeof ValidationRuleSchema>;
@@ -418,6 +455,8 @@ export type FlowEdge = z.infer<typeof FlowEdgeSchema>;
 
 /** DeepSeek 结构化输出用（与 FeatureArtifact 对齐，字段更宽松便于模型填充） */
 export const LlmFeatureOutputSchema = FeatureArtifactSchema.omit({
+  // field_facts 为确定性事实，不让 LLM 生成
+  field_facts: true,
   sources: true,
   analyzer: true,
   model: true,
