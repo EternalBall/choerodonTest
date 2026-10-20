@@ -99,11 +99,14 @@ program
   .description('已合并到 gen；仅写出元操作文件（等同 gen -f -p --meta-only）')
   .requiredOption('-f, --feature <name>', '功能名，如 Material / 物料维护')
   .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)
-  .action(async (opts: { feature: string; project: string }) => {
+  .option('-d, --dir <path>', '功能源码目录，读取该目录下完整文件，优先于关键词检索')
+  .action(async (opts: { feature: string; project: string; dir?: string }) => {
     await ensureDirs();
     console.warn('\n提示: analyze 已合并到 gen，推荐: pnpm ata gen -f ... -p ...\n');
     const outputSlug = await resolveOutputSlugForFeature(opts.feature);
-    const artifact = await analyzeFeatureFromSource(opts.feature, opts.project);
+    const artifact = await analyzeFeatureFromSource(opts.feature, opts.project, {
+      featureDir: opts.dir,
+    });
     const result = await runGenPipeline({
       artifact,
       outputSlug,
@@ -128,6 +131,7 @@ program
     TARGET_PROJECT_DEFAULT,
   )
   .option('-i, --input <file>', '已有 artifacts/<slug>/feature.yaml，仅重新生成测试脚本')
+  .option('-d, --dir <path>', '功能源码目录，读取该目录下完整文件，优先于关键词检索')
   .option('--meta-only', '只写元操作文件，不生成 suite（需 -f 且 -p）')
   .option('--from-knowledge', '与 -f 同义，优先 knowledge/features')
   .option('--archive-v1', '已有元操作时，不询问直接存档 v1（尚无 v1 时）')
@@ -141,6 +145,7 @@ program
       metaOnly?: boolean;
       archiveV1?: boolean;
       noArchivePrompt?: boolean;
+      dir?: string;
     }) => {
       await ensureDirs();
       const { parse } = await import('yaml');
@@ -151,7 +156,9 @@ program
 
       if (opts.feature && opts.project) {
         outputSlug = await resolveOutputSlugForFeature(opts.feature);
-        artifact = await analyzeFeatureFromSource(opts.feature, opts.project);
+        artifact = await analyzeFeatureFromSource(opts.feature, opts.project, {
+          featureDir: opts.dir,
+        });
         writeArtifact = true;
       } else if (opts.input) {
         artifact = FeatureArtifactSchema.parse(parse(await fs.readFile(opts.input, 'utf8')));

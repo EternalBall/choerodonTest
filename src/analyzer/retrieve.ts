@@ -35,8 +35,11 @@ export async function retrieveFeatureCode(opts: {
   projectRoot: string;
   maxFiles?: number;
   maxCharsPerFile?: number;
+  /** 功能源码目录（相对 projectRoot 或绝对路径）；提供时读该目录完整文件，不做关键词检索 */
+  featureDir?: string;
 }): Promise<RetrieveResult> {
   const root = path.resolve(opts.projectRoot);
+  if (opts.featureDir) return retrieveFeatureDir(root, opts.featureDir);
   const maxFiles = opts.maxFiles ?? 28;
   const maxChars = opts.maxCharsPerFile ?? 6000;
   const needle = opts.feature.trim().toLowerCase();
@@ -131,6 +134,42 @@ export async function retrieveFeatureCode(opts: {
   return { root, snippets };
 }
 
+const DIR_GLOB = '**/*.{ts,tsx,js,jsx}';
+const DIR_IGNORE = [
+  '**/node_modules/**',
+  '**/*.d.ts',
+  '**/*.test.*',
+  '**/*.spec.*',
+  '**/__snapshots__/**',
+];
+
+/**
+ * 按功能目录读取完整文件：关键词检索会截断且漏文件，
+ * 用户明确指定目录时应拿到该目录的全部源码，且不混入目录外文件。
+ */
+async function retrieveFeatureDir(root: string, featureDir: string): Promise<RetrieveResult> {
+  const dir = path.resolve(root, featureDir);
+  const abs = await fg(DIR_GLOB, {
+    cwd: dir,
+    absolute: true,
+    onlyFiles: true,
+    ignore: DIR_IGNORE,
+  });
+  const items = abs
+    .map((a) => ({ abs: a, rel: path.relative(root, a).replace(/\\/g, '/') }))
+    .sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0)); // 固定顺序，保证 prompt 可复现
+
+  const snippets: CodeSnippet[] = [];
+  let totalChars = 0;
+  for (const item of items) {
+    const content = await fs.readFile(item.abs, 'utf8');
+    snippets.push({ relativePath: item.rel, absolutePath: item.abs, content });
+    totalChars += content.length;
+  }
+  logger.info({ root, featureDir: dir, files: snippets.length, totalChars }, 'retrieveFeatureCode(dir)');
+  return { root, snippets };
+}
+
 /** .../routes/product/Material/xxx → .../routes/product/Material */
 function guessFeatureDir(rel: string): string | undefined {
   const norm = rel.replace(/\\/g, '/');
@@ -145,12 +184,21 @@ function guessFeatureDir(rel: string): string | undefined {
 
 export function formatSnippetsForPrompt(snippets: CodeSnippet[], maxTotalChars = 80_000): string {
   const parts: string[] = [];
+  const dropped: string[] = [];
   let used = 0;
   for (const s of snippets) {
     const block = `===== FILE: ${s.relativePath} =====\n${s.content}\n`;
-    if (used + block.length > maxTotalChars) break;
+    // 超限后不再放入任何后续文件，保持「前缀」语义，并记录被丢弃者
+    if (dropped.length > 0 || used + block.length > maxTotalChars) {
+      dropped.push(s.relativePath);
+      continue;
+    }
     parts.push(block);
     used += block.length;
+  }
+  // 不静默截断：明确告警被丢弃的文件，便于调大上限或缩小目录
+  if (dropped.length > 0) {
+    logger.warn({ maxTotalChars, used, dropped }, 'formatSnippetsForPrompt: 超出总字符上限，以下文件被丢弃');
   }
   return parts.join('\n');
 }

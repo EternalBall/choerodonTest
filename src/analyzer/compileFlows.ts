@@ -310,6 +310,7 @@ function templateStepsForOp(
   pages: PageNode[],
   pageIds: Set<string>,
   entryRoute?: string,
+  hasRowGate = false,
 ): DraftStep[] {
   const pageId = pageIdOf(op, pages, entryRoute);
   const steps: DraftStep[] = [];
@@ -460,6 +461,49 @@ function templateStepsForOp(
     }
     case 'delete': {
       push(draftGoto(pageId, pages, op, entryRoute));
+      if (isRowEditDelete(op, hasRowGate)) {
+        // 表格行编辑模式：已落库行不可删（row_gate 限制），固定模板的「点删除」无目标行会失败。
+        // 改为：进编辑 → 增行造出未落库行 → 删该行 → Popconfirm 确认 → 保存落库。
+        push({
+          id: `click_edit_${pageId}`,
+          name: '编辑',
+          kind: 'click',
+          page_id: pageId,
+          element: unlockElement(op) || 'editBtn',
+        });
+        push({
+          id: `add_line_${op.id}`,
+          name: '增行',
+          kind: 'click',
+          page_id: pageId,
+          element: 'addLineBtn',
+        });
+        push({
+          id: `remove_line_${op.id}`,
+          name: op.name || '删行',
+          kind: 'click',
+          page_id: pageId,
+          element: 'removeLineBtn',
+        });
+        push({
+          id: `confirm_${op.id}`,
+          name: '确认删除',
+          kind: 'click',
+          page_id: pageId,
+          element: 'confirmBtn',
+          note: 'Popconfirm 确认',
+        });
+        push({
+          id: `save_${op.id}`,
+          name: '保存',
+          kind: op.api ? 'click_expect_api' : 'click',
+          page_id: pageId,
+          element: 'saveBtn',
+          api: op.api,
+          args: op.api ? { urlIncludes: op.api } : undefined,
+        });
+        break;
+      }
       push({
         id: `click_delete_${op.id}`,
         name: op.name || '删除',
@@ -577,6 +621,23 @@ function templateStepsForOp(
   return steps;
 }
 
+/**
+ * 是否为「表格行编辑模式」下的删除：需先点页头编辑，且只能删未落库的新增行。
+ * 动机：此类页面没有可直接点的删除按钮，固定 4 步模板会在回放时找不到目标。
+ */
+function isRowEditDelete(op: Operation, hasRowGate: boolean): boolean {
+  const needEdit =
+    (op.preconditions ?? []).includes('click:editBtn') || op.unlock === 'click:editBtn';
+  if (!needEdit) return false;
+  const chain = op.execution_chain ?? [];
+  return (
+    Boolean(op.description?.includes('增行')) ||
+    chain.includes('add_line') ||
+    chain.includes('remove_line') ||
+    hasRowGate
+  );
+}
+
 function stepsToFlow(op: Operation, metaIds: string[]): Flow {
   const nodes: FlowNode[] = metaIds.map((meta_op_id, i) => ({
     id: `${op.id}_n${i}`,
@@ -616,8 +677,10 @@ export function compileMetaOpsAndFlows(
   const entryRoute = artifact.entry?.route;
   const metaMap = new Map<string, MetaOp>();
   const flows: Flow[] = [];
+  // 同页存在 row_gate 说明有「仅未落库行可操作」的行级门禁，供 delete 判定行编辑模式
+  const hasRowGate = (artifact.field_rules ?? []).some((r) => Boolean(r.row_gate));
   const operations = (artifact.operations ?? []).map((op) => {
-    const drafts = templateStepsForOp(op, pages, pageIds, entryRoute);
+    const drafts = templateStepsForOp(op, pages, pageIds, entryRoute, hasRowGate);
     const metaIds = drafts.map((d) => ensureMeta(metaMap, d));
     flows.push(stepsToFlow(op, metaIds));
     return {

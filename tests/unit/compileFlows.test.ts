@@ -129,3 +129,52 @@ describe('compileMetaOpsAndFlows', () => {
     assert.equal(gotos[0]!.id, 'goto_config');
   });
 });
+
+describe('compileMetaOpsAndFlows delete', () => {
+  it('行编辑模式 delete：编辑 → 增行 → 删行 → 确认 → 保存', () => {
+    const art = baseArtifact({
+      operations: [
+        {
+          id: 'delete_line',
+          name: '删除行',
+          type: 'delete',
+          page_id: 'config',
+          description: '先增行再删除未落库行',
+          preconditions: ['click:editBtn'],
+          api: '/v1/save',
+        },
+      ],
+    });
+    const out = compileMetaOpsAndFlows(art, { force: true });
+    const chain = out.operations[0]!.execution_chain!;
+    assert.deepEqual(chain, [
+      'goto_config',
+      'click_edit_config',
+      'add_line_delete_line',
+      'remove_line_delete_line',
+      'confirm_delete_line',
+      'save_delete_line',
+    ]);
+    const byId = new Map(out.meta_ops!.map((m) => [m.id, m]));
+    assert.equal(byId.get('add_line_delete_line')!.element, 'addLineBtn');
+    assert.equal(byId.get('remove_line_delete_line')!.element, 'removeLineBtn');
+    assert.equal(byId.get('save_delete_line')!.kind, 'click_expect_api');
+    assert.equal(byId.get('save_delete_line')!.api, '/v1/save');
+  });
+
+  it('普通 delete 仍为原 4 步', () => {
+    const art = baseArtifact({
+      operations: [
+        { id: 'del', name: '删除', type: 'delete', page_id: 'config', api: '/v1/del' },
+      ],
+    });
+    const out = compileMetaOpsAndFlows(art, { force: true });
+    assert.deepEqual(out.operations[0]!.execution_chain, [
+      'goto_config',
+      'click_delete_del',
+      'confirm_del',
+      'expect_api_del',
+    ]);
+  });
+});
+
