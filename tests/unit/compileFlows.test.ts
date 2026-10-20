@@ -377,6 +377,7 @@ describe('头行联动与抽屉', () => {
     assert.equal(tail[0]!.element, 'locatorCell');
     assert.equal(tail[1]!.kind, 'pick_lov');
     assert.equal(tail[1]!.element, 'locatorLovIcon');
+    assert.deepEqual(tail[1]!.args, { open: 'locatorLovIcon' });
   });
 
   it('external 目标页：在来源页点边上的控件，而不是 goto 外部页', () => {

@@ -382,6 +382,7 @@ function draftFromActionToken(
         page_id: pageId,
         // 行内 Lov：触发器为 row_target 的 element（先点格子出现 .c7n-pro-table-editor，再点搜索图标）
         element: op.row_target?.control === 'lov' ? op.row_target.element : undefined,
+        args: op.row_target?.control === 'lov' && op.row_target.element ? { open: op.row_target.element } : undefined,
       };
     case 'open_dropdown':
       return {
@@ -965,8 +966,10 @@ function llmDraft(op: Operation, s: ValidatedStep, i: number): DraftStep {
     s.kind === 'goto' || s.kind === 'filter_query'
       ? `${s.kind}_${s.page_id ?? 'main'}`
       : `${op.id}_s${i + 1}`;
-  const args =
+  let args =
     s.kind === 'click_expect_api' && s.api ? { urlIncludes: s.api, ...(s.args ?? {}) } : s.args;
+  // pickLov 关键词用 args.open 指向 Lov 搜索图标；模型只写 element 时补上
+  if (s.kind === 'pick_lov' && s.element && !args?.open) args = { ...(args ?? {}), open: s.element };
   return { id, name: s.name, kind: s.kind, page_id: s.page_id, element: s.element, api: s.api, args, note: s.note };
 }
 
