@@ -1110,3 +1110,1023 @@ tooltipInner:
 singletonTooltipContainer:
   css: .c7n-pro-singleton-tooltip-container
   note: 'Tooltip.show 单例的 body 容器'
+
+# ---------- choerodon-legacy-input（见 playbooks/choerodon-legacy-input.md）----------
+# 旧版输入框（Input / InputNumber / AutoComplete）建议新增定位键
+# 来源：knowledge/playbooks/choerodon-legacy-input.md；未并入 platform/choerodon/kit.yaml
+
+legacyInputElement:
+  css: input.c7n-input
+  note: 旧版 Input 原生框；Pro 为 input.c7n-pro-input，勿混用
+
+legacyInputWrapper:
+  css: .c7n-input-wrapper
+  note: 无 addon 时的包裹层；功能层勿与 affix/group 混用
+
+legacyInputGroup:
+  css: .c7n-input-group-wrapper
+  note: 仅 addonBefore/addonAfter 时存在
+
+legacyInputAffixWrapper:
+  css: .c7n-input-affix-wrapper
+  note: 仅 prefix/suffix 时存在
+
+legacyInputCopyIcon:
+  css: .c7n-input-icon-copy
+  note: copy 属性开启时
+
+legacyInputEyeIcon:
+  css: .c7n-input-icon-eye
+  note: showPasswordEye 且 type=password 时
+
+legacyInputNumberWrapper:
+  css: .c7n-input-number
+  note: 旧版 InputNumber 根；Pro 为 .c7n-pro-input-number-wrapper
+
+legacyInputNumberInput:
+  css: 'input[role="spinbutton"]'
+  note: 旧版数值输入框；功能层用 within 限定表单项
+
+legacyInputNumberUp:
+  css: .c7n-input-number-handler-up
+  note: 上步进按钮
+
+legacyInputNumberDown:
+  css: .c7n-input-number-handler-down
+  note: 下步进按钮
+
+legacyAutoCompleteSelection:
+  css: .c7n-select-auto-complete .c7n-select-selection
+  note: 点击展开；展开前搜索输入不可见
+
+legacyAutoCompleteInput:
+  css: .c7n-select-auto-complete .c7n-select-search--inline input.c7n-input
+  note: 展开后的搜索输入；功能层 within 限定
+
+legacyAutoCompleteClear:
+  css: .c7n-select-auto-complete .c7n-select-selection__clear
+  note: allowClear 且有值时
+
+legacyAutoCompletePopup:
+  css: .c7n-select-dropdown
+  note: 旧版 Select 共用的弹层类；与 Pro 的 .c7n-pro-select-popup 不同
+
+legacyAutoCompleteMenuItem:
+  css: .c7n-select-dropdown-menu-item
+  note: 菜单项；配合 exactText 选中
+
+# ---------- choerodon-legacy-select（见 playbooks/choerodon-legacy-select.md）----------
+# 建议新增 kit 键（来源：knowledge/playbooks/choerodon-legacy-select.md）
+# 旧版 Select / TreeSelect / Cascader（choerodon-ui，非 Pro）；待人工合并进 platform/choerodon/kit.yaml
+# 键前缀 legacySelect / legacyTreeSelect / legacyCascader，与现有 selectWrapper / treeSelectWrapper / cascaderWrapper 不重名
+
+legacySelectRoot:
+  css: .c7n-select:has(.c7n-select-selection)
+  note: 旧版 Select / TreeSelect 共用外壳；功能层 within 表单项收窄
+
+legacySelectSelection:
+  css: .c7n-select-selection
+  note: 点击打开；多个旧版下拉时 within 根
+
+legacySelectDropdown:
+  css: .c7n-select-dropdown:not(.c7n-select-tree-dropdown)
+  note: 打开态平铺菜单；关闭态是否保留 DOM 待核实（<<待核实>>）
+
+legacySelectDropdownItem:
+  css: .c7n-select-dropdown-menu-item
+  note: 选项；hasText 指定文案
+
+legacySelectSearchInput:
+  css: .c7n-select-search__field
+  note: 搜索 / tags / combobox 输入框
+
+legacySelectMultiRemove:
+  css: .c7n-select-selection__choice__remove
+  note: 多选标签删除图标
+
+legacySelectClear:
+  css: .c7n-select-clear
+  note: allowClear 时出现
+
+legacyTreeSelectDropdown:
+  css: .c7n-select-tree-dropdown
+  note: 打开态树弹层；与 legacySelectDropdown 排除关系见其 note
+
+legacyTreeSelectTreeNode:
+  css: .c7n-select-tree-treenode
+  note: 树节点行；hasText 指定节点名
+
+legacyTreeSelectSwitcher:
+  css: .c7n-select-tree-switcher:not(.c7n-select-tree-switcher-noop)
+  note: 仅有子节点时可点击
+
+legacyTreeSelectNodeContent:
+  css: .c7n-select-tree-node-content-wrapper
+  note: 节点文本区，点击选中
+
+legacyTreeSelectNodeSelected:
+  css: .c7n-select-tree-node-content-wrapper.c7n-select-tree-node-selected
+  note: 已选节点（断言用）
+
+legacyTreeSelectCheckbox:
+  css: .c7n-select-tree-checkbox-inner
+  note: treeCheckable 时的勾选框
+
+legacyTreeSelectSearchInput:
+  css: .c7n-select-dropdown-search input
+  note: 弹层内搜索框，仅单选 showSearch
+
+legacyCascaderPicker:
+  css: .c7n-cascader-picker
+  note: 触发器；功能层 within 表单项收窄
+
+legacyCascaderPickerLabel:
+  css: .c7n-cascader-picker-label
+  note: 已选文案（displayRender 结果）
+
+legacyCascaderPickerClear:
+  css: .c7n-cascader-picker-clear
+  note: allowClear 且有值时
+
+legacyCascaderPickerArrow:
+  css: .c7n-cascader-picker-arrow
+  note: 下拉箭头；加 -expand 表示打开
+
+legacyCascaderInput:
+  css: .c7n-cascader-picker input.c7n-cascader-input
+  note: showSearch 时可输入；className 挂载层级 <<待核实>>
+
+legacyCascaderMenus:
+  css: .c7n-cascader-menus:not(.c7n-cascader-menus-empty)
+  note: 打开态多列弹层（挂 body）
+
+legacyCascaderMenuItem:
+  css: .c7n-cascader-menus .c7n-cascader-menu-item
+  note: 菜单项；hasText 指定文案
+
+legacyCascaderMenuItemSelected:
+  css: .c7n-cascader-menus .c7n-cascader-menu-item-selected
+  note: 已选项（断言用）
+
+# ---------- choerodon-legacy-check（见 playbooks/choerodon-legacy-check.md）----------
+legacyCheckboxWrapper:
+  css: .c7n-checkbox-wrapper
+  note: 功能层用 :has(input.c7n-checkbox-input[value=…]) 收窄；hasText 选文案
+legacyCheckboxChecked:
+  css: input.c7n-checkbox-input:checked
+  note: 仅配合 assertVisible；须收窄
+legacyCheckboxIndeterminate:
+  css: .c7n-checkbox-wrapper .c7n-checkbox-indeterminate
+legacyCheckboxGroup:
+  css: .c7n-checkbox-group
+  note: Checkbox.Group 根；多组时 within 表单项
+legacyRadioWrapper:
+  css: .c7n-radio-wrapper
+  note: 功能层用 :has(input.c7n-radio-input[name=…]) 收窄；hasText 选文案
+legacyRadioChecked:
+  css: input.c7n-radio-input:checked
+  note: 仅配合 assertVisible；须收窄
+legacyRadioButtonWrapper:
+  css: .c7n-radio-button-wrapper
+legacyRadioGroup:
+  css: .c7n-radio-group
+  note: 同组根；带 label 时外层为 .c7n-radio-group-wrapper
+legacySwitch:
+  css: span.c7n-switch
+  note: 根节点即交互元素；同页多个时功能层收窄
+legacySwitchChecked:
+  css: span.c7n-switch.c7n-switch-checked
+legacySwitchLoading:
+  css: span.c7n-switch.c7n-switch-loading
+  note: 加载中仅有类名，无图标节点
+legacySwitchDisabled:
+  css: span.c7n-switch.c7n-switch-disabled
+legacyRate:
+  css: ul.c7n-rate
+  note: 功能层用字段所在表单项收窄；无 input[name]
+legacyRateStar:
+  css: ul.c7n-rate li.c7n-rate-star
+  note: 点击用 :nth-child(N)；数量由 count 决定
+legacyRateStarFull:
+  css: ul.c7n-rate li.c7n-rate-star-full
+legacyRateDisabled:
+  css: ul.c7n-rate.c7n-rate-disabled
+legacySlider:
+  css: div.c7n-slider
+  note: 根；同页多个时功能层用 :has(…) 或 within 收窄
+legacySliderHandle:
+  css: div.c7n-slider-handle
+  note: range 时 2 个，用 .c7n-slider-handle-1 / -2 区分
+legacySliderMarkText:
+  css: .c7n-slider-mark-text
+  note: 仅 marks 时存在
+legacySliderDisabled:
+  css: .c7n-slider.c7n-slider-disabled
+
+# ---------- choerodon-legacy-date（见 playbooks/choerodon-legacy-date.md）----------
+legacyDatePickerWrapper:
+  css: '.c7n-calendar-picker'
+  note: '旧版日期选择器外层；Pro 为 c7n-pro-calendar-picker-wrapper'
+
+legacyDatePickerInput:
+  css: 'input.c7n-calendar-picker-input'
+  note: '单日输入框；功能层 within 表单项收窄'
+
+legacyDatePickerIcon:
+  css: '.c7n-calendar-picker-icon-wrapper'
+  note: '点击打开面板'
+
+legacyDatePickerPopup:
+  css: '.c7n-calendar-picker-container'
+  note: '打开态挂 body'
+
+legacyDatePickerCell:
+  css: '.c7n-calendar-picker-container td.c7n-calendar-cell:not(.c7n-calendar-disabled-cell)'
+  note: '点日期前排除禁用格；用 exactText 选日号'
+
+legacyRangePickerWrapper:
+  css: '.c7n-calendar-range-picker'
+  note: '区间选择器外层'
+
+legacyRangePickerInput:
+  css: 'input.c7n-calendar-range-picker-input'
+  note: '两个输入框：nth=0 开始，nth=1 结束'
+
+legacyTimePickerRoot:
+  css: '.c7n-time-picker'
+  note: '旧版独立时间选择器外层；DatePicker showTime 不用此类'
+
+legacyTimePickerInput:
+  css: '.c7n-time-picker-input'
+  note: '输入框；功能层 within 表单项收窄'
+
+legacyTimePickerPanel:
+  css: '.c7n-time-picker-panel'
+  note: '打开态弹层，挂 body'
+
+legacyTimePickerColumn:
+  css: '.c7n-time-picker-panel-select'
+  note: '时/分/秒列，多列时用 nth 区分'
+
+legacyTimePickerOption:
+  css: '.c7n-time-picker-panel-select li'
+  note: '选项；用 exactText 选值；-option-disabled 不可点'
+
+legacyCalendarRoot:
+  css: '.c7n-fullcalendar-fullscreen'
+  note: '全屏日历根（fullscreen 默认 true）；非全屏类名 <<待核实>>'
+
+legacyCalendarHeader:
+  css: '.c7n-fullcalendar-header'
+  note: '头部；headerRender 时不存在'
+
+legacyCalendarYearSelect:
+  css: '.c7n-fullcalendar-year-select'
+  note: '年份切换'
+
+legacyCalendarMonthSelect:
+  css: '.c7n-fullcalendar-month-select'
+  note: '月份切换'
+
+legacyCalendarDateCell:
+  css: '.c7n-fullcalendar-date'
+  note: '日视图格；用 .c7n-fullcalendar-value 文案定位日号'
+
+legacyCalendarMonthCell:
+  css: '.c7n-fullcalendar-month'
+  note: '月视图格'
+
+# ---------- choerodon-legacy-table（见 playbooks/choerodon-legacy-table.md）----------
+# 旧版 choerodon-ui（table / pagination / list）建议新增定位键
+# 来源：playbooks/choerodon-legacy-table.md；合入 platform/choerodon/kit.yaml 前需人工确认 <<待核实>> 项
+
+legacyTable:
+  css: .c7n-table
+  note: 旧版 Table 外层 div；勿与内层 table 写逗号并集
+
+legacyTableWrapper:
+  css: .c7n-table-wrapper
+  note: 含 title / 表 / 分页；多表时功能层再收窄
+
+legacyTableBody:
+  css: .c7n-table-tbody
+
+legacyTableRow:
+  css: .c7n-table-tbody > tr.c7n-table-row
+  note: 数据行；选中态带 .c7n-table-row-selected
+
+legacyTableEmpty:
+  text: 暂无数据
+  note: 旧版 locale 默认 emptyText（index.zh-CN.md）
+
+legacyTableRowCheckbox:
+  css: .c7n-table-tbody .c7n-table-selection-column .c7n-checkbox-input
+  note: <<待核实:checkbox 类名>>
+
+legacyTableFilterDropdown:
+  css: .c7n-table-filter-dropdown
+  note: 列筛选浮层（挂 body）
+
+legacyTablePagination:
+  css: .c7n-table-pagination
+  note: Table 内嵌 Pagination 的 className（Table.tsx:1160）
+
+legacyPagination:
+  css: .c7n-pagination
+
+legacyPaginationPrev:
+  css: .c7n-pagination-prev
+
+legacyPaginationNext:
+  css: .c7n-pagination-next
+
+legacyPaginationItem:
+  css: .c7n-pagination-item
+  note: 页码 li；按页码定位见 playbook
+
+legacyPaginationItemActive:
+  css: .c7n-pagination-item-active
+
+legacyPaginationTotalText:
+  css: .c7n-pagination-total-text
+
+legacyPaginationSizeChanger:
+  css: .c7n-pagination-size-changer
+  note: <<待核实:是否为 Select 根元素类>>
+
+legacyPaginationQuickJumper:
+  css: .c7n-pagination-quick-jumper
+
+legacyList:
+  css: .c7n-list
+
+legacyListItem:
+  css: .c7n-list-item
+
+legacyListItemTitle:
+  css: .c7n-list-item-meta-title
+
+legacyListItemAction:
+  css: .c7n-list-item-action
+
+legacyListHeader:
+  css: .c7n-list-header
+
+legacyListFooter:
+  css: .c7n-list-footer
+
+legacyListEmptyText:
+  css: .c7n-list-empty-text
+
+legacyListSelectionCheckbox:
+  css: .c7n-list-selection-checkbox
+
+legacyListPagination:
+  css: .c7n-list-pagination
+
+legacyListPaginationNext:
+  css: .c7n-list-pagination .c7n-pagination-next
+
+# ---------- choerodon-legacy-form-button（见 playbooks/choerodon-legacy-form-button.md）----------
+# Choerodon 旧版（choerodon-ui/lib）表单 / 按钮 / IconSelect / Icon 定位键（待合并进 kit.yaml）
+# 来源：playbooks/choerodon-legacy-form-button.md；类名依据见该文件各节
+
+legacyFormRoot:
+  css: form.c7n-form
+  note: 旧版表单根；多表单 within 收窄；勿与 Pro 的 c7n-pro-form 混用
+
+legacyFormItem:
+  css: .c7n-form-item
+
+legacyFormItemLabel:
+  css: .c7n-form-item-label label
+
+legacyFormItemRequired:
+  css: .c7n-form-item-required
+
+legacyFormItemInput:
+  css: .c7n-form-item-control input
+  note: 多字段需功能层 :has(label:text-is("…")) 唯一化
+
+legacyFormExplain:
+  css: .c7n-form-item-explain
+
+legacyButtonRoot:
+  css: .c7n-btn
+  note: 旧版按钮根（button 或 a）；多按钮用 role+name 或 hasText
+
+legacyButtonPrimary:
+  css: .c7n-btn-primary
+
+legacyButtonLoading:
+  css: .c7n-btn-loading
+
+legacyButtonDisabled:
+  css: .c7n-btn[disabled]
+
+legacyButtonGroup:
+  css: .c7n-btn-group
+
+legacyIconSelectRoot:
+  css: .c7n-icon-select
+
+legacyIconSelectTrigger:
+  css: .c7n-icon-select .c7n-select-selection
+  note: 触发器类名待核实（rc-select 生成）
+
+legacyIconSelectDropdown:
+  css: .c7n-icon-select-dropdown
+
+legacyIconSelectOption:
+  css: .c7n-icon-select-dropdown .c7n-select-dropdown-menu li
+
+legacyIconSelectFilter:
+  css: .c7n-icon-select-dropdown .c7n-select-dropdown-filter input
+
+legacyIconSelectPagination:
+  css: .c7n-icon-select-dropdown .c7n-select-dropdown-footer .c7n-pagination
+
+legacyIconSelectValue:
+  css: .c7n-icon-select .c7n-select-selection-selected-value i.icon
+
+legacyIconFont:
+  css: i.icon
+  note: 字体图标；指定类型需 .icon-<type> 并限定容器（Button 内同样为 i.icon）
+
+legacyIconSvg:
+  css: span.c7nicon[role="img"]
+  note: 传 scriptUrl / createFromIconfontCN 时的 SVG 形态
+
+# ---------- choerodon-legacy-tree-transfer（见 playbooks/choerodon-legacy-tree-transfer.md）----------
+# 旧版 Tree / Transfer / Upload / ImageCrop 建议新增键，来源：playbooks/choerodon-legacy-tree-transfer.md
+# ---------- Tree（treeRoot / treeSwitcher / treeNodeContent / treeNodeSelected 已存在，不重复）----------
+legacyTreeNodeRow:
+  css: .c7n-tree-treenode
+
+legacyTreeCheckbox:
+  css: .c7n-tree-checkbox
+  note: 必须 within legacyTreeNodeRow
+
+legacyTreeSwitcherLoading:
+  css: .c7n-tree-switcher-loading-icon
+
+legacyTreeDirectory:
+  css: .c7n-tree-directory
+
+# ---------- Transfer（旧版，区别于 Pro 的 transferXxx 键）----------
+legacyTransferRoot:
+  css: .c7n-transfer
+
+legacyTransferLeftList:
+  css: .c7n-transfer > .c7n-transfer-list:nth-of-type(1)
+
+legacyTransferRightList:
+  css: .c7n-transfer > .c7n-transfer-list:nth-of-type(3)
+
+legacyTransferItem:
+  css: .c7n-transfer-list-content-item
+  note: 必须 within 列表使用
+
+legacyTransferHeaderCheckbox:
+  css: .c7n-transfer-list-header .c7n-checkbox
+  note: 必须 within 列表使用
+
+legacyTransferSearchInput:
+  css: .c7n-transfer-list-search
+
+legacyTransferMoveRightBtn:
+  css: .c7n-transfer-operation > button:nth-of-type(2)
+  note: 默认文案 '>'；operations 自定义时以 hasText 为准
+
+legacyTransferMoveLeftBtn:
+  css: .c7n-transfer-operation > button:nth-of-type(1)
+  note: 默认文案 '<'
+
+legacyTransferSort:
+  css: .c7n-transfer-sort
+
+# ---------- Upload（旧版，区别于 Pro 的 uploadInput / uploadListItem）----------
+legacyUploadRoot:
+  css: .c7n-upload
+
+legacyUploadFileInput:
+  css: .c7n-upload input[type="file"]
+  note: 待核实 input 外层，选择器需在运行页面确认
+
+legacyUploadDragger:
+  css: .c7n-upload-drag
+
+legacyUploadListItem:
+  css: .c7n-upload-list-item
+
+legacyUploadListItemDone:
+  css: .c7n-upload-list-item-done
+
+legacyUploadListItemError:
+  css: .c7n-upload-list-item-error
+
+legacyUploadRemoveBtn:
+  css: .c7n-upload-list-item-action-remove
+  note: 仅 picture-card；text 模式待核实
+
+# ---------- ImageCrop ----------
+legacyImageCropModal:
+  css: .c7n-image-crop-modal
+
+legacyImageCropActualSize:
+  css: .c7n-image-crop-btn-actual-size
+
+legacyImageCropAspectWidth:
+  css: .c7n-image-crop-aspect-input-width input
+
+legacyImageCropAspectHeight:
+  css: .c7n-image-crop-aspect-input-height input
+
+legacyAvatarCropDragger:
+  css: .c7n-avatar-crop-dragger
+
+# ---------- choerodon-legacy-overlay（见 playbooks/choerodon-legacy-overlay.md）----------
+legacyModal:
+  css: .c7n-modal-wrap > .c7n-modal:not(.c7n-confirm)
+  note: 旧版居中弹窗根；功能层用标题文案收窄
+legacyModalTitle:
+  css: .c7n-modal-wrap > .c7n-modal:not(.c7n-confirm) .c7n-modal-title
+legacyModalOk:
+  css: .c7n-modal-wrap > .c7n-modal:not(.c7n-confirm) .c7n-modal-footer .c7n-btn-primary
+  note: 默认 okText「确定」；footer 自定义时失效
+legacyModalCancel:
+  css: .c7n-modal-wrap > .c7n-modal:not(.c7n-confirm) .c7n-modal-footer .c7n-btn:not(.c7n-btn-primary)
+legacyModalClose:
+  css: .c7n-modal-wrap > .c7n-modal .c7n-modal-close
+  note: 需 closable 为 true（默认）
+legacyConfirmModal:
+  css: .c7n-modal.c7n-confirm
+  note: Modal.confirm 系列
+legacyConfirmOk:
+  css: .c7n-modal.c7n-confirm .c7n-confirm-btns .c7n-btn-primary
+legacyConfirmTitle:
+  css: .c7n-modal.c7n-confirm .c7n-confirm-title
+legacyPopconfirm:
+  css: .c7n-popover:has(.c7n-popover-buttons)
+  note: 旧版气泡确认；仅 Popconfirm 含 -buttons
+legacyPopconfirmTitle:
+  css: .c7n-popover:has(.c7n-popover-buttons) .c7n-popover-message-title
+legacyPopconfirmOk:
+  css: .c7n-popover:has(.c7n-popover-buttons) .c7n-popover-buttons .c7n-btn-primary
+  note: okType 改变时失效
+legacyPopconfirmCancel:
+  css: .c7n-popover:has(.c7n-popover-buttons) .c7n-popover-buttons button:first-child
+legacyPopover:
+  css: .c7n-popover:not(:has(.c7n-popover-buttons))
+  note: 旧版 Popover 根；无按钮区
+legacyPopoverTitle:
+  css: .c7n-popover .c7n-popover-title
+legacyPopoverContent:
+  css: .c7n-popover .c7n-popover-inner-content
+legacyTooltip:
+  css: .c7n-tooltip:not(.c7n-tooltip-hidden)
+  note: 旧版 Tooltip 打开态；与 Pro tooltipPopup 区分
+legacyTooltipInner:
+  css: .c7n-tooltip:not(.c7n-tooltip-hidden) .c7n-tooltip-inner
+  note: 文案容器，断言用 textContains
+legacyTooltipTriggerOpen:
+  css: .c7n-tooltip-open
+  note: 触发元素带此类表示浮层已打开
+legacyDropdownPopup:
+  css: .c7n-dropdown:not(.c7n-dropdown-hidden)
+  note: 旧版下拉弹层打开态；菜单项复用 dropdownMenuItem
+legacyDropdownTrigger:
+  css: .c7n-dropdown-trigger
+  note: 被 Dropdown 包裹的元素；多个时 within 行或表单
+legacyDropdownButton:
+  css: .c7n-dropdown-button
+  note: DropdownButton 外层，区别于 Pro 行内更多（rowMoreTrigger）
+
+# ---------- choerodon-legacy-feedback（见 playbooks/choerodon-legacy-feedback.md）----------
+# 旧版 Message / Notification / Alert / Result / Spin 建议新增定位键
+# 来源：knowledge/playbooks/choerodon-legacy-feedback.md；未并入 platform/choerodon/kit.yaml
+# 已存在可复用键（不在此重复）：messageSuccess、notificationNotice、notificationClose、notificationTitle、notificationDescription、spinSpinning、spinBlur、spinText
+
+messageInfo:
+  css: .c7n-message-custom-content.c7n-message-info
+messageError:
+  css: .c7n-message-custom-content.c7n-message-error
+messageWarning:
+  css: .c7n-message-custom-content.c7n-message-warning
+messageLoading:
+  css: .c7n-message-custom-content.c7n-message-loading
+
+notificationWithIcon:
+  css: .c7n-notification-notice-with-icon
+notificationIcon:
+  css: .c7n-notification-notice-icon
+notificationBtn:
+  css: .c7n-notification-notice-btn
+notificationCloseIcon:
+  css: .c7n-notification-close-icon
+  note: '默认关闭图标；点击目标用 notificationClose（外层 a）'
+
+alertRoot:
+  css: .c7n-alert
+  note: '功能层用 :has(.c7n-alert-message:text-is("…")) 收窄'
+alertBanner:
+  css: .c7n-alert.c7n-alert-banner
+alertMessage:
+  css: .c7n-alert-message
+alertDescription:
+  css: .c7n-alert-description
+alertIcon:
+  css: .c7n-alert-icon
+alertCloseIcon:
+  css: .c7n-alert-close-icon
+  note: '为 a（无 href）；勿用 role=link'
+
+resultRoot:
+  css: .c7n-result
+  note: '结果页根；状态用 .c7n-result-<status> 收窄'
+resultIcon:
+  css: .c7n-result-icon
+resultImage:
+  css: .c7n-result-icon.c7n-result-image
+  note: '403/404/500 错误页图片（svg 无类名，靠父级）'
+resultTitle:
+  css: .c7n-result-title
+resultSubtitle:
+  css: .c7n-result-subtitle
+resultExtra:
+  css: .c7n-result-extra
+
+spinDot:
+  css: .c7n-spin-dot
+spinNestedLoading:
+  css: .c7n-spin-nested-loading
+spinContainer:
+  css: .c7n-spin-container
+  note: '子内容容器；加载中带 .c7n-spin-blur'
+
+# ---------- choerodon-legacy-status（见 playbooks/choerodon-legacy-status.md）----------
+# choerodon-legacy-status.md 建议新增的 kit 键（旧版 progress / skeleton / badge / tag / avatar，待合并入 platform/choerodon/kit.yaml）
+
+legacyProgressRoot:
+  css: .c7n-progress
+  note: '与 progressRoot 同 DOM；功能层 within 收窄到目标区域'
+
+legacyProgressLine:
+  css: .c7n-progress.c7n-progress-line
+  note: '线形进度条'
+
+legacyProgressCircle:
+  css: .c7n-progress.c7n-progress-circle
+  note: '圆形与仪表盘（dashboard）'
+
+legacyProgressText:
+  css: .c7n-progress-text
+  note: 'showInfo 时的百分比或状态图标'
+
+legacyProgressBg:
+  css: .c7n-progress-bg
+  note: '宽度即百分比'
+
+legacyProgressStatusException:
+  css: .c7n-progress.c7n-progress-status-exception
+  note: '异常态'
+
+legacySkeletonRoot:
+  css: .c7n-skeleton
+  note: '也匹配 Skeleton.Avatar / Input 等独立占位块；限定到目标区域'
+
+legacySkeletonActive:
+  css: .c7n-skeleton.c7n-skeleton-active
+  note: '仅表示动画，不作完成判据'
+
+legacySkeletonTitle:
+  css: .c7n-skeleton-title
+  note: 'h3 标题占位'
+
+legacySkeletonParagraph:
+  css: .c7n-skeleton-paragraph
+  note: 'ul 段落占位'
+
+legacySkeletonAvatar:
+  css: .c7n-skeleton-avatar
+  note: '头像占位块'
+
+legacyBadgeRoot:
+  css: .c7n-badge
+  note: '包裹元素根；与 Tag / Avatar 区分靠 within 收窄'
+
+legacyBadgeCount:
+  css: .c7n-badge .c7n-badge-count
+  note: '数字角标；count 为 0 且未 showZero 时不存在'
+
+legacyBadgeDot:
+  css: .c7n-badge .c7n-badge-dot
+  note: 'dot 模式小红点'
+
+legacyBadgeStatusDot:
+  css: .c7n-badge-status-dot
+  note: 'status 状态点'
+
+legacyBadgeStatusText:
+  css: .c7n-badge-status-text
+  note: 'status / text 时的文案'
+
+legacyTagRoot:
+  css: .c7n-tag
+  note: '静态 / 可关闭标签；按 hasText 收窄'
+
+legacyTagClose:
+  css: .c7n-tag .icon-close
+  note: 'closable 时的关闭图标；需 within 目标标签'
+
+legacyTagCheckable:
+  css: .c7n-tag.c7n-tag-checkable
+  note: 'CheckableTag'
+
+legacyTagCheckableChecked:
+  css: .c7n-tag.c7n-tag-checkable-checked
+  note: '已选中的 CheckableTag'
+
+legacyAvatarRoot:
+  css: .c7n-avatar
+  note: '头像根（span）；功能层 within 收窄'
+
+legacyAvatarImage:
+  css: .c7n-avatar.c7n-avatar-image
+  note: '图片头像（src 加载成功）'
+
+legacyAvatarString:
+  css: .c7n-avatar-string
+  note: '文字头像'
+
+legacyAvatarGroup:
+  css: .c7n-avatar-group
+  note: 'Avatar.Group 外壳'
+
+legacyAvatarPopoverNumber:
+  css: .c7n-avatar-popover-number
+  note: '超出数量的 +N，hover 触发'
+
+legacyAvatarPopover:
+  css: .c7n-avatar-popover
+  note: '超出头像弹层，挂 body'
+
+# ---------- choerodon-legacy-nav（见 playbooks/choerodon-legacy-nav.md）----------
+# 旧版导航类建议新增定位键（来源：knowledge/playbooks/choerodon-legacy-nav.md）
+# 未并入 platform/choerodon/kit.yaml；与现有键无重名（tabsRoot/tabsTab/tabsTabActive/tabPaneActive 复用，不重复列出）
+
+legacyTabsNavAdd:
+  css: .c7n-tabs-nav-add
+legacyTabsMoreTab:
+  css: .c7n-tabs-more-tab
+legacyTabsMoreDropdownPopup:
+  css: .c7n-tabs-more-dropdown-popup
+legacyTabsTabNext:
+  css: .c7n-tabs-tab-next
+
+legacyMenuRoot:
+  css: .c7n-menu-root
+legacyMenuItem:
+  css: .c7n-menu-item
+legacyMenuItemSelected:
+  css: .c7n-menu-item-selected
+legacyMenuItemDisabled:
+  css: .c7n-menu-item-disabled
+legacyMenuSubmenuTitle:
+  css: .c7n-menu-submenu-title
+legacyMenuSubmenuOpen:
+  css: .c7n-menu-submenu-open
+legacyMenuItemGroupTitle:
+  css: .c7n-menu-item-group-title
+
+legacyStepsRoot:
+  css: .c7n-steps
+legacyStepsItem:
+  css: .c7n-steps-item
+legacyStepsItemProcess:
+  css: .c7n-steps-item-process
+legacyStepsItemFinish:
+  css: .c7n-steps-item-finish
+legacyStepsItemError:
+  css: .c7n-steps-item-error
+legacyStepsItemTitle:
+  css: .c7n-steps-item-title
+
+legacyBreadcrumbRoot:
+  css: .c7n-breadcrumb
+legacyBreadcrumbLink:
+  css: .c7n-breadcrumb-link
+legacyBreadcrumbSeparator:
+  css: .c7n-breadcrumb-separator
+legacyBreadcrumbOverlayLink:
+  css: .c7n-breadcrumb-overlay-link
+
+legacyAnchorWrapper:
+  css: .c7n-anchor-wrapper
+legacyAnchorLink:
+  css: .c7n-anchor-link
+legacyAnchorLinkTitle:
+  css: a.c7n-anchor-link-title
+legacyAnchorLinkTitleActive:
+  css: .c7n-anchor-link-title-active
+legacyAnchorInkBall:
+  css: .c7n-anchor-ink-ball.visible
+
+# ---------- choerodon-legacy-layout（见 playbooks/choerodon-legacy-layout.md）----------
+# 旧版布局 / 栅格 / 卡片 / 折叠面板 / 分割线 建议新增定位键
+# 来源：knowledge/playbooks/choerodon-legacy-layout.md；待合并进 platform/choerodon/kit.yaml
+# 栅格 rowRoot / rowFlex / colRoot 已存在于 kit.yaml，此处不重复
+
+legacyLayoutRoot:
+  css: .c7n-layout
+  note: 有 Sider 时带 .c7n-layout-has-sider
+
+legacyLayoutHeader:
+  css: .c7n-layout-header
+
+legacyLayoutContent:
+  css: .c7n-layout-content
+
+legacyLayoutFooter:
+  css: .c7n-layout-footer
+
+legacyLayoutSider:
+  css: .c7n-layout-sider
+
+legacyLayoutSiderCollapsed:
+  css: .c7n-layout-sider-collapsed
+
+legacyLayoutSiderTrigger:
+  css: .c7n-layout-sider-trigger
+  note: collapsible 时的底部收放按钮
+
+legacyLayoutSiderZeroTrigger:
+  css: .c7n-layout-sider-zero-width-trigger
+  note: 零宽度时的触发器（span）
+
+legacyLayoutSiderChildren:
+  css: .c7n-layout-sider-children
+
+legacyCardRoot:
+  css: .c7n-card
+  note: 旧版卡片；Pro 为 c7n-pro-card 不在本键范围
+
+legacyCardHead:
+  css: .c7n-card-head
+
+legacyCardHeadTitle:
+  css: .c7n-card-head-title
+
+legacyCardExtra:
+  css: .c7n-card-extra
+  note: 右上角操作区；within 卡片根
+
+legacyCardBody:
+  css: .c7n-card-body
+
+legacyCardCover:
+  css: .c7n-card-cover
+
+legacyCardActions:
+  css: ul.c7n-card-actions
+
+legacyCardMeta:
+  css: .c7n-card-meta
+
+legacyCardGrid:
+  css: .c7n-card-grid
+
+legacyCardGridSelected:
+  css: .c7n-card-grid-selected
+
+legacyCardSelected:
+  css: .c7n-card-selected
+  note: 卡片根选中态；按 cornerPlacement / size 修饰类附加
+
+legacyCardLoading:
+  css: .c7n-card-loading-content
+  note: loading 骨架；waitFor hidden 等其消失
+
+legacyCollapseRoot:
+  css: .c7n-collapse
+
+legacyCollapseHeader:
+  css: .c7n-collapse-header
+  note: <<待核实:rc-collapse 运行时类名，本仓库无 node_modules>>
+
+legacyCollapseContent:
+  css: .c7n-collapse-content
+  note: <<待核实:rc-collapse 运行时类名>>；面板体，收起时可能被隐藏
+
+legacyCollapseExpandIcon:
+  css: .c7n-collapse-expand-icon
+  note: 带 -expanded / -collapsed 修饰类
+
+legacyCollapseExpandText:
+  css: .c7n-collapse-expand-text
+  note: expandIcon="text" 时的展开收起文案
+
+legacyCollapseNoArrow:
+  css: .c7n-collapse-no-arrow
+  note: CollapsePanel showArrow=false 时附加在面板根
+
+legacyDividerRoot:
+  css: .c7n-divider
+
+legacyDividerHorizontal:
+  css: .c7n-divider-horizontal
+
+legacyDividerVertical:
+  css: .c7n-divider-vertical
+
+legacyDividerWithText:
+  css: '.c7n-divider[class*="with-text"]'
+  note: 含 -with-text / -with-text-left / -with-text-right
+
+legacyDividerInnerText:
+  css: .c7n-divider-inner-text
+
+legacyDividerDashed:
+  css: .c7n-divider-dashed
+
+# ---------- choerodon-legacy-display（见 playbooks/choerodon-legacy-display.md）----------
+timelineRoot:
+  css: .c7n-timeline
+  note: 时间轴根 ul；同页多个时间轴时 within 收窄
+
+timelineItem:
+  css: .c7n-timeline-item
+  note: 条目 li；不匹配 -pending 变体（类名整词匹配）
+
+timelinePendingItem:
+  css: .c7n-timeline-item-pending
+  note: pending 占位项，内含 Spin
+
+statisticRoot:
+  css: .c7n-statistic
+  note: 统计卡片根；Countdown 同结构
+
+statisticTitle:
+  css: .c7n-statistic-title
+  note: 仅传了 title 时渲染
+
+statisticValue:
+  css: .c7n-statistic-content-value
+  note: 数值容器；多个卡片时 within 收窄
+
+carouselRoot:
+  css: .c7n-carousel
+  note: 走马灯根；theme/vertical 追加修饰类
+
+carouselNext:
+  css: .c7n-carousel .slick-next
+  note: 仅 arrows=true 渲染
+
+carouselPrev:
+  css: .c7n-carousel .slick-prev
+  note: 仅 arrows=true 渲染
+
+carouselDotActive:
+  css: .c7n-carousel .slick-dots li.slick-active
+  note: 当前页圆点（react-slick 类名，无 c7n 前缀）
+
+barCodeCanvas:
+  css: canvas
+  note: 无 c7n 类；必须 within 业务容器收窄
+
+waterMarkWrapper:
+  css: .c7n-watermark-wrapper
+  note: 水印包裹层
+
+waterMark:
+  css: .c7n-watermark
+  note: 水印覆盖层；enable=false 时不渲染
+
+# ---------- choerodon-legacy-misc（见 playbooks/choerodon-legacy-misc.md）----------
+legacyAffixFixed:
+  css: .c7n-affix
+  note: '旧版 Affix 固定态；存在即 position:fixed，不存在为未固定'
+
+legacyBackTop:
+  css: .c7n-back-top
+  note: '旧版回到顶部按钮；仅滚动超过 visibilityHeight 时挂载'
+
+legacyBackTopContent:
+  css: .c7n-back-top .c7n-back-top-content
+  note: '默认样式圆底；自定义 children 时不存在'
+
+legacyBackTopIcon:
+  css: .c7n-back-top .c7n-back-top-icon
+  note: '默认箭头图标；自定义 children 时不存在'
+
+legacyTriggerUploadPopup:
+  css: .c7n-upload-popup
+  note: '旧版 Trigger 承载的 Upload 弹层（prefixCls=c7n-upload）；挂 body，多实例需收窄'
+
+legacyTriggerUploadPopupInner:
+  css: .c7n-upload-popup .c7n-upload-popup-inner
+  note: '弹层内容区'
+
+legacyTriggerPopupContainer:
+  css: .c7n-pro-popup-container
+  note: '挂 body 的弹层容器，与 Pro 共用类名，勿单独作断言'
