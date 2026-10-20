@@ -21,6 +21,17 @@
 | [choerodon-upload.md](./choerodon-upload.md) | Upload / Attachment |
 | [choerodon-tabs.md](./choerodon-tabs.md) | Tabs（c7n-tabs） |
 | [choerodon-tree.md](./choerodon-tree.md) | Tree / TreeSelect / Cascader |
+| [choerodon-text-input.md](./choerodon-text-input.md) | TextField / TextArea / Password / Email·Url / IntlField / SecretField / AutoComplete / Mentions |
+| [choerodon-number-input.md](./choerodon-number-input.md) | NumberField / Currency / PercentField / Range |
+| [choerodon-check-radio-switch.md](./choerodon-check-radio-switch.md) | CheckBox / Radio / Switch / SelectBox / Segmented |
+| [choerodon-date-time-ext.md](./choerodon-date-time-ext.md) | DateTimePicker / TimePicker |
+| [choerodon-period-picker.md](./choerodon-period-picker.md) | Month / Quarter / Week / YearPicker |
+| [choerodon-picker-misc.md](./choerodon-picker-misc.md) | ColorPicker / IconPicker / Rate |
+| [choerodon-transfer-screening.md](./choerodon-transfer-screening.md) | Transfer / Screening |
+| [choerodon-form.md](./choerodon-form.md) | Form / Output / Button / Row·Col |
+| [choerodon-performance-table.md](./choerodon-performance-table.md) | PerformanceTable / Board |
+| [choerodon-rich-content.md](./choerodon-rich-content.md) | RichText / CodeArea / Picture / Typography / OverflowTip |
+| [choerodon-feedback.md](./choerodon-feedback.md) | Message / Notification / Spin / Progress / Skeleton / Tooltip |
 | [page-states.md](./page-states.md) | 页面状态与就绪条件 |
 | [row-action.md](./row-action.md) | 行内动作（Radio/Switch 等，非页头保存） |
 | [api-binding.md](./api-binding.md) | 从源码抽取 API 字面量 |

@@ -388,3 +388,725 @@ cascaderMenu:
 
 cascaderMenuItem:
   css: .c7n-pro-cascader-menu-item
+
+# ---------- choerodon-text-input（见 playbooks/choerodon-text-input.md）----------
+textFieldInput:
+  css: input.c7n-pro-input
+  note: 单行文本通用输入框；与 Select/Lov/Intl/AutoComplete 同类，功能层须 within 字段或加 [name=]
+
+textFieldClearBtn:
+  css: .c7n-pro-input-clear-button
+  note: 需 clearButton 且有值；within 字段 wrapper。清空不能用 fill 空串
+
+textFieldLengthInfo:
+  css: .c7n-pro-input-length-info
+  note: showLengthInfo 时的字数提示（TextField.tsx:952）
+
+textFieldValidationTip:
+  css: .c7n-pro-validation-message
+  note: 字段校验提示（field/utils.tsx:560）；文案需在功能层用 within 收窄
+
+textAreaInput:
+  css: textarea.c7n-pro-textarea
+  note: 多行文本；与 Mentions 的 textarea.c7n-pro-mentions 区分；功能层加 [name=] 或 within。fillForm 文本回退对其无效
+
+textAreaWrapper:
+  css: .c7n-pro-textarea-wrapper
+  note: TextArea 外层，作为 within 根
+
+passwordInput:
+  css: input.c7n-pro-password
+  note: 密码输入框；不含 -fix-autofill 隐藏域（类名不同）；功能层加 [name=]
+
+passwordRevealBtn:
+  css: .c7n-pro-password-inner-button
+  note: 眼睛按钮；reveal=false 或禁用时不存在（Password.tsx:52-62）
+
+passwordRevealOn:
+  css: .c7n-pro-password-inner-button .icon-visibility
+  note: 明文显示态；隐藏态图标为 icon-visibility_off
+
+emailFieldInput:
+  css: input.c7n-pro-input[type="email"]
+  note: 邮箱输入框；功能层加 [name=] 收窄
+
+emailFieldInvalidTip:
+  text: 请输入有效的邮箱地址。
+  note: zh_CN type_mismatch 文案（locale-context/zh_CN.tsx:245）；仅作断言参照，语言切换后失效
+
+urlFieldInput:
+  css: input.c7n-pro-input[type="url"]
+  note: 网址输入框；功能层加 [name=] 收窄
+
+urlFieldInvalidTip:
+  text: 请输入有效的网址。
+  note: zh_CN type_mismatch 文案（locale-context/zh_CN.tsx:308）；仅作断言参照，语言切换后失效
+
+intlFieldIcon:
+  css: .c7n-pro-input-suffix .icon-language
+  note: 多语言入口，点击打开 Modal；须 within 字段 wrapper
+
+intlFieldLangInput:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-body input.c7n-pro-input
+  note: 多语言弹窗内语言行；多行时为 textarea.c7n-pro-textarea；功能层按 name 收窄（tlsKey 待核实）
+
+secretFieldWrapper:
+  css: .c7n-pro-input-wrapper.c7n-pro-input-secret
+  note: 脱敏字段外层，within 表单项
+
+secretFieldEmpty:
+  css: .c7n-pro-input-secret-empty
+  note: 只读且空值时的占位（SecretField.tsx:206）
+
+secretFieldEditBtn:
+  css: .c7n-pro-input-suffix .icon-edit-o
+  note: 可编辑态入口；within 字段 wrapper
+
+secretFieldViewBtn:
+  css: .c7n-pro-input-suffix .icon-visibility-o
+  note: 只读未查看入口；within 字段 wrapper
+
+secretFieldModal:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active:has(.c7n-pro-secret-field-modal)
+  note: 脱敏验证/编辑弹窗；footer 为 null，按钮在表单内
+
+secretFieldModalForm:
+  css: .c7n-pro-secret-field-modal-form
+  note: 弹窗内表单，within 弹窗
+
+secretFieldVerifyBtn:
+  css: .c7n-pro-secret-field-modal-verify-btn
+  note: 获取验证码，会触发后端请求（CountDownButton.tsx:23）
+
+secretFieldSlider:
+  css: .c7n-pro-secret-field-simple-verify-bar
+  note: 滑块验证条；拖拽当前无关键字支持，需测试环境跳过（待核实）
+
+secretFieldNextBtn:
+  css: .c7n-pro-secret-field-modal-raised-btn
+  note: 验证阶段主按钮：编辑时为「下一步」，查看时为「确定」（SecretFieldView.tsx:390/399）
+
+secretFieldConfirmBtn:
+  css: .c7n-pro-secret-field-modal-edit-btns button:last-child
+  note: 编辑阶段「确定」（SecretFieldView.tsx:414）；按位置定位，class 未在源码中确认
+
+autoCompleteInput:
+  css: input.c7n-pro-auto-complete
+  note: 自动补全输入框；功能层加 [name=] 或 within 字段
+
+autoCompleteClearBtn:
+  css: .c7n-pro-auto-complete-clear-button
+  note: 需有值；within 字段 wrapper
+
+autoCompletePopup:
+  css: .c7n-pro-auto-complete-popup-single
+  note: 单选弹层；多选为 -popup-multiple（Select.tsx:1099）
+
+autoCompleteMenu:
+  css: .c7n-pro-auto-complete-dropdown-menu
+  note: 选项容器（Select.tsx:791）；选项用 exactText 收窄
+
+mentionsInput:
+  css: textarea.c7n-pro-mentions
+  note: 提及输入框；与 TextArea 的 textarea.c7n-pro-textarea 区分；功能层加 [name=] 或 within
+
+mentionsWrapper:
+  css: .c7n-pro-mentions-wrapper
+  note: Mentions 外层，作为 within 根
+
+# ---------- choerodon-number-input（见 playbooks/choerodon-number-input.md）----------
+# 数值类输入（NumberField / Currency / PercentField / Range）建议新增定位键
+# 来源：knowledge/playbooks/choerodon-number-input.md；未并入 platform/choerodon/kit.yaml
+
+numberFieldWrapper:
+  css: '.c7n-pro-input-number-wrapper'
+  note: '功能层用 :has(input[name=字段]) 收窄；Currency、PercentField 共用此 DOM'
+
+numberFieldInput:
+  css: 'input.c7n-pro-input-number'
+  note: '功能层用 input[name=字段] 定位；Currency 同 DOM，需靠字段定义区分'
+
+numberFieldSuffix:
+  css: '.c7n-pro-input-number-suffix'
+  note: '后缀，如 % 或单位'
+
+numberFieldPlus:
+  css: '.c7n-pro-input-number-inner-button .c7n-pro-input-number-plus'
+  note: '仅设置 step 且可编辑时出现'
+
+numberFieldMinus:
+  css: '.c7n-pro-input-number-inner-button .c7n-pro-input-number-minus'
+  note: '仅设置 step 且可编辑时出现'
+
+numberFieldClearButton:
+  css: '.c7n-pro-input-number-clear-button'
+  note: '无 step 且可清空时出现'
+
+percentFieldWrapper:
+  css: '.c7n-pro-input-number-wrapper.c7n-pro-input-number-percentage'
+  note: 'PercentField 专属外层类；功能层再用 :has(input[name=字段]) 收窄'
+
+rangeWrapper:
+  css: '.c7n-pro-range-wrapper'
+  note: 'Range 无 input，用此键定位；多个时在表单项或行内 within'
+
+rangeHandle:
+  css: '.c7n-pro-range-handle'
+  note: '双滑块时为 2 个，用 nth 或 within'
+
+rangeTrack:
+  css: '.c7n-pro-range-track'
+  note: '已选段'
+
+rangeMarkText:
+  css: '.c7n-pro-range-mark-text'
+  note: '仅设置 marks 时存在'
+
+# ---------- choerodon-check-radio-switch（见 playbooks/choerodon-check-radio-switch.md）----------
+# 建议新增 kit 键（来源：knowledge/playbooks/choerodon-check-radio-switch.md）
+# 待人工合并进 platform/choerodon/kit.yaml；功能层按字段/选项用 :has / hasText 收窄
+
+checkBoxWrapper:
+  css: .c7n-pro-checkbox-wrapper
+  note: '功能层用 :has(input[name=字段][value=…]) 收窄；hasText 选文案'
+
+checkBoxChecked:
+  css: input.c7n-pro-checkbox:checked
+  note: '仅配合 assert visible（间接断言）；须收窄'
+
+checkBoxIndeterminate:
+  css: .c7n-pro-checkbox-wrapper.c7n-pro-checkbox-indeterminate
+
+radioWrapper:
+  css: .c7n-pro-radio-wrapper
+  note: '功能层用 :has(input[name=字段][value=…]) 收窄；hasText 选文案'
+
+radioButtonWrapper:
+  css: .c7n-pro-radio-wrapper.c7n-pro-radio-button
+
+radioChecked:
+  css: input.c7n-pro-radio:checked
+  note: '仅配合 assert visible（间接断言）；须收窄'
+
+switchWrapper:
+  css: .c7n-pro-switch-wrapper
+  note: '功能层用 :has(input[name=字段]) 收窄'
+
+switchInput:
+  css: input.c7n-pro-switch
+  note: 'press ArrowLeft / ArrowRight 切换'
+
+switchChecked:
+  css: input.c7n-pro-switch:checked
+  note: '仅配合 assert visible（间接断言）；须收窄'
+
+switchLoadingIndicator:
+  css: .c7n-pro-switch-wrapper .c7n-progress-loading
+  note: '<<待核实>> 选择器前缀未在本仓库样式中确认'
+
+selectBoxWrapper:
+  css: .c7n-pro-select-box-wrapper
+  note: '功能层用 :has(input[name=字段]) 收窄'
+
+selectBoxRadioOption:
+  css: .c7n-pro-select-box .c7n-pro-radio-wrapper
+  note: '单选；hasText 选文案'
+
+selectBoxCheckOption:
+  css: .c7n-pro-select-box .c7n-pro-checkbox-wrapper
+  note: 'multiple；hasText 选文案'
+
+segmentedWrapper:
+  css: .c7n-pro-segmented-wrapper
+  note: '功能层用 :has(input[name=字段]) 收窄'
+
+segmentedOption:
+  css: .c7n-pro-segmented .c7n-pro-radio-wrapper
+  note: 'hasText 选文案'
+
+segmentedChecked:
+  css: .c7n-pro-segmented input.c7n-pro-radio:checked
+  note: '仅配合 assert visible（间接断言）'
+
+# ---------- choerodon-date-time-ext（见 playbooks/choerodon-date-time-ext.md）----------
+# 建议新增到 platform/choerodon/kit.yaml 的键（来自 playbooks/choerodon-date-time-ext.md，未并入 kit.yaml）
+# DateTimePicker / TimePicker 继承 DatePicker，前缀 c7n-pro-calendar-picker；面板 c7n-pro-calendar-*
+
+dateTimePickerWrapper:
+  css: .c7n-pro-calendar-picker-date-time-picker-wrapper
+  note: DateTimePicker 外层；与 DatePicker wrapper 共用 .c7n-pro-calendar-picker-wrapper，需带扩展类区分
+
+dateTimePickerSuffix:
+  css: .c7n-pro-calendar-picker-date-time-picker-wrapper .c7n-pro-calendar-picker-suffix
+  note: 日历后缀图标，点开面板
+
+dateTimePickerPopup:
+  css: .c7n-pro-calendar-picker-popup-datetime
+  note: DateTimePicker 弹层（popup-datetime 后缀由 DatePicker.getPopupClassName 追加）
+
+dateTimePickerCell:
+  css: .c7n-pro-calendar-picker-popup-datetime .c7n-pro-calendar-cell-inner
+  note: 日期格；点击前避开 .c7n-pro-calendar-disabled
+
+dateTimePickerNowBtn:
+  css: .c7n-pro-calendar-picker-popup-datetime .c7n-pro-calendar-footer-now-btn
+  note: 此刻 / 今天按钮（DateTimesView.tsx:71）
+
+timePickerWrapper:
+  css: .c7n-pro-calendar-picker-time-picker-wrapper
+  note: TimePicker 外层；需带扩展类区分 DatePicker
+
+timePickerSuffix:
+  css: .c7n-pro-calendar-picker-time-picker-wrapper .c7n-pro-calendar-picker-suffix
+  note: 点开时间面板
+
+timePickerPopup:
+  css: .c7n-pro-calendar-picker-popup-time
+  note: TimePicker 弹层，仅时间列
+
+timePickerCell:
+  css: .c7n-pro-calendar-picker-popup-time .c7n-pro-calendar-time-list .c7n-pro-calendar-cell-inner
+  note: 时/分/秒列中的值格；按文本过滤点击，避开 .c7n-pro-calendar-disabled
+
+timePickerNowBtn:
+  css: .c7n-pro-calendar-picker-popup-time .c7n-pro-calendar-footer-now-btn
+  note: 此刻 / 现在按钮（TimesView.tsx:344）
+
+# ---------- choerodon-period-picker（见 playbooks/choerodon-period-picker.md）----------
+# 由 choerodon-period-picker.md 汇总的建议新增 kit 键（未合并入 platform/choerodon/kit.yaml）
+monthPickerWrapper:
+  css: .c7n-pro-calendar-picker-month-picker-wrapper
+monthPickerPopup:
+  css: .c7n-pro-calendar-picker-popup-month
+monthPickerCell:
+  css: .c7n-pro-calendar-picker-popup-month .c7n-pro-calendar-cell:not(.c7n-pro-calendar-disabled)
+quarterPickerWrapper:
+  css: .c7n-pro-calendar-picker-quarter-picker-wrapper
+quarterPickerPopup:
+  css: .c7n-pro-calendar-picker-popup-quarter
+quarterPickerCell:
+  css: .c7n-pro-calendar-picker-popup-quarter .c7n-pro-calendar-cell:not(.c7n-pro-calendar-disabled)
+weekPickerWrapper:
+  css: .c7n-pro-calendar-picker-week-picker-wrapper
+weekPickerPopup:
+  css: .c7n-pro-calendar-picker-popup-week
+weekPickerCell:
+  css: .c7n-pro-calendar-picker-popup-week .c7n-pro-calendar-cell:not(.c7n-pro-calendar-disabled)
+weekPickerNowBtn:
+  css: .c7n-pro-calendar-picker-popup-week .c7n-pro-calendar-footer-now-btn
+yearPickerWrapper:
+  css: .c7n-pro-calendar-picker-year-picker-wrapper
+yearPickerPopup:
+  css: .c7n-pro-calendar-picker-popup-year
+yearPickerCell:
+  css: .c7n-pro-calendar-picker-popup-year .c7n-pro-calendar-cell:not(.c7n-pro-calendar-disabled):not(.c7n-pro-calendar-old):not(.c7n-pro-calendar-new)
+
+# ---------- choerodon-picker-misc（见 playbooks/choerodon-picker-misc.md）----------
+# 颜色 / 图标 / 评分选择建议新增定位键
+# 来源：knowledge/playbooks/choerodon-picker-misc.md
+# 未在源码证实的选择器（rate 星星、hex 输入框、分页按钮）未列入，见 playbook 的 <<待核实>> 标记
+
+colorPickerWrapper:
+  css: .c7n-pro-color-picker-wrapper
+  note: 功能层用 :has(input[name=字段]) 收窄；mode=button 时带 .c7n-pro-color-picker-button
+
+colorPickerTrigger:
+  css: .c7n-pro-color-picker-wrapper .c7n-pro-color-picker-trigger
+  note: palette 图标；button 模式不渲染
+
+colorPickerPopup:
+  css: .c7n-pro-color-picker-popup
+  note: 打开态色板弹层（挂 body）
+
+colorPickerPaletteBlock:
+  css: .c7n-pro-color-picker-popup-view-palettes-block
+  note: 备选色块；选中态带 -active
+
+colorPickerNoFill:
+  css: .c7n-pro-color-picker-no-fill
+  note: 「无填充」按钮，preset 开启时存在
+
+colorPickerStopAdd:
+  css: button.c7n-pro-color-picker-stop-add
+  note: 渐变模式增加色标；也可用 aria-label="Add color stop"
+
+colorPickerGradientText:
+  css: textarea.c7n-pro-color-picker-gradient-text
+  note: 渐变 CSS 文本；也可用 aria-label="Gradient CSS"
+
+iconPickerWrapper:
+  css: .c7n-pro-icon-picker-wrapper
+  note: 功能层用 :has(input[name=字段]) 收窄
+
+iconPickerPopup:
+  css: .c7n-pro-icon-picker-popup
+  note: 打开态图标面板；宽 7rem
+
+iconPickerItem:
+  css: .c7n-pro-icon-picker-popup li
+  note: 图标项；点击目标为其内 div，名称在 p 中
+
+iconPickerItemSelected:
+  css: .c7n-pro-icon-picker-popup .c7n-pro-icon-picker-item-selected
+  note: 当前选中图标
+
+iconPickerTab:
+  css: .c7n-pro-icon-picker-tab
+  note: 多分类时的 Tabs；单分类为 .c7n-pro-icon-picker-single-tab
+
+rateWrapper:
+  css: .c7n-pro-rate-wrapper
+  note: Pro Rate 包裹层（字段包裹 .c7n-pro-field）
+
+rateReadonly:
+  css: .c7n-pro-rate-wrapper.c7n-pro-rate-readonly
+  note: 只读态（FormField 的 readonly 修饰类）
+
+# ---------- choerodon-transfer-screening（见 playbooks/choerodon-transfer-screening.md）----------
+# 建议新增的 kit 定位键（Transfer / Screening），来源：playbooks/choerodon-transfer-screening.md
+# 与 platform/choerodon/kit.yaml 现有键无重名
+
+# ---------- Transfer（穿梭框）----------
+transferWrapper:
+  css: .c7n-pro-transfer-wrapper
+
+transferLeftList:
+  css: .c7n-pro-transfer-wrapper > .c7n-pro-transfer:nth-of-type(1)
+  note: 左列表（源）；DOM 顺序 list / operation / list / sort
+
+transferRightList:
+  css: .c7n-pro-transfer-wrapper > .c7n-pro-transfer:nth-of-type(3)
+  note: 右列表（目标）
+
+transferItem:
+  css: .c7n-pro-transfer-content-item
+  note: 必须 within 列表使用
+
+transferHeaderSelectAll:
+  css: .c7n-pro-transfer-header .c7n-pro-checkbox
+  note: 必须 within 列表使用；全选当前列表
+
+transferSearchInput:
+  css: .c7n-pro-transfer-body-search-wrapper input
+  note: 必须 within 列表使用
+
+transferMoveRightBtn:
+  css: .c7n-pro-transfer-operation button:has(.icon-navigate_next)
+  note: 无文案，按图标定位
+
+transferMoveLeftBtn:
+  css: .c7n-pro-transfer-operation button:has(.icon-navigate_before)
+  note: 无文案，按图标定位
+
+transferSortUpBtn:
+  css: .c7n-pro-transfer-sort button:has(.icon-expand_less)
+  note: 仅 sortable
+
+transferSortDownBtn:
+  css: .c7n-pro-transfer-sort button:has(.icon-expand_more)
+  note: 仅 sortable
+
+# ---------- Screening（筛选器）----------
+screeningRoot:
+  css: .c7n-pro-screening
+
+screeningChoosed:
+  css: .c7n-pro-screening-choosed
+  note: 已选条；有值时出现
+
+screeningItem:
+  css: .c7n-pro-screening-item
+  note: 用 hasText 指定 label（文本为 label + 冒号）
+
+screeningOption:
+  css: .c7n-pro-screening-item-option
+  note: 必须 within 具体 screeningItem
+
+screeningMultiBtn:
+  css: .c7n-pro-screening-item-operation .c7n-pro-screening-item-multiple
+  note: 单选态下的「多选」切换
+
+screeningConfirmBtn:
+  css: .c7n-pro-screening-item-footer button:has-text("确认")
+  note: 多选态；必须 within 具体 screeningItem
+
+# ---------- choerodon-form（见 playbooks/choerodon-form.md）----------
+# 表单容器与布局（Form / Output / Button / Row·Col）建议新增定位键
+# 来源：knowledge/playbooks/choerodon-form.md；待合并进 platform/choerodon/kit.yaml
+
+formRoot:
+  css: .c7n-pro-form
+  note: 多表单时 within 收窄；嵌在其它 form 内时不渲染根
+
+formHeader:
+  css: .c7n-pro-form-header
+
+formItemGroup:
+  css: .c7n-pro-form-item-group
+
+formFieldLabel:
+  css: td.c7n-pro-field-label
+  note: 含 label>span 文案；定位字段行时用功能层键
+
+formFieldRequiredLabel:
+  css: td.c7n-pro-field-label.c7n-pro-field-required
+
+formFieldWrapper:
+  css: .c7n-pro-field-wrapper
+
+outputRoot:
+  css: .c7n-pro-output
+  note: 只读展示；不要 fill
+
+outputMultiLabel:
+  css: .c7n-pro-output-multi-label
+
+outputMultiValue:
+  css: .c7n-pro-output-multi-value
+
+buttonRoot:
+  css: .c7n-pro-btn
+  note: 含 button 与 a；页面多按钮时用 role+name
+
+buttonPrimary:
+  css: .c7n-pro-btn-primary
+
+buttonFlat:
+  css: .c7n-pro-btn-flat
+
+buttonLoading:
+  css: .c7n-pro-btn-loading
+
+buttonDisabled:
+  css: .c7n-pro-btn-disabled
+
+buttonDisabledWrapper:
+  css: .c7n-pro-btn-disabled-wrapper
+
+rowRoot:
+  css: .c7n-row
+  note: 基础栅格，全站共用；断言前 within formRoot 收窄
+
+rowFlex:
+  css: .c7n-row-flex
+
+colRoot:
+  css: .c7n-col
+  note: 基础栅格；多匹配时用 :has(input[name=…]) 唯一化
+
+# ---------- choerodon-performance-table（见 playbooks/choerodon-performance-table.md）----------
+# 由 choerodon-performance-table.md 汇总的建议新增 kit 键（未合并入 platform/choerodon/kit.yaml）
+performanceTableRoot:
+  css: '.c7n-performance-table'
+performanceTableHeaderSortable:
+  css: '.c7n-performance-table-cell-header-sortable'
+performanceTableCell:
+  css: '.c7n-performance-table-body-row-wrapper .c7n-performance-table-cell'
+performanceTableHighlightRow:
+  css: '.c7n-performance-table-row-highLight'
+performanceTableEmpty:
+  css: '.c7n-performance-table-body-info'
+performanceTableToolbar:
+  css: '.c7n-performance-table-toolbar'
+performanceTableProfessionalQueryBar:
+  css: '.c7n-performance-table-professional-query-bar'
+boardKanbanWrapper:
+  css: '.c7n-pro-board-wrapper'
+boardCardWrapper:
+  css: '.c7n-pro-board-card-wrapper'
+boardKanbanColumn:
+  css: '.c7n-pro-board-column-container'
+boardKanbanColumnCount:
+  css: '.c7n-pro-board-column-header-count'
+boardQuote:
+  css: '.c7n-pro-board-quote-container'
+boardCard:
+  css: '.c7n-pro-board-card-container'
+boardViewItem:
+  css: '.c7n-pro-board-switch-board .c7n-pro-board-view-item'
+boardViewAdd:
+  css: '.c7n-pro-board-switch-board .c7n-pro-board-view-add'
+boardViewSwitcher:
+  css: '.c7n-pro-btn:has(.icon-baseline-arrow_drop_down)'
+
+# ---------- choerodon-rich-content（见 playbooks/choerodon-rich-content.md）----------
+# 富内容与展示（RichText / CodeArea / Picture / Typography / OverflowTip）建议新增定位键
+# 来源：knowledge/playbooks/choerodon-rich-content.md；未并入 platform/choerodon/kit.yaml
+
+# ---------- RichText ----------
+richTextWrapper:
+  css: .c7n-pro-rich-text-wrapper
+  note: 功能层用字段 label 所在表单项收窄；无 input[name]
+
+richTextEditor:
+  css: .c7n-pro-rich-text-quill .ql-editor
+  note: contenteditable；多个富文本时在表单项内 within
+
+richTextBoldBtn:
+  css: .c7n-pro-rich-text-toolbar .ql-bold
+  note: 工具栏加粗按钮
+
+richTextViewer:
+  css: .c7n-pro-rich-text-wrapper .quill .ql-editor
+  note: mode="preview" 只读渲染；图片点击进 LightBox
+
+# ---------- CodeArea ----------
+codeAreaWrapper:
+  css: .c7n-pro-code-area-wrapper
+  note: 含可选 header；功能层用 label 收窄
+
+codeAreaEditor:
+  css: .c7n-pro-code-area-wrapper .CodeMirror
+  note: 点击获取焦点后再 press 快捷键
+
+codeAreaTextarea:
+  css: .c7n-pro-code-area-wrapper .CodeMirror textarea
+  note: 写入目标；可见性待实测
+
+codeAreaThemeSwitch:
+  css: .c7n-pro-code-area-header-switch .c7n-pro-switch
+  note: 仅 themeSwitch 设置且 options.theme 未设置时存在
+
+codeAreaDisabled:
+  css: .c7n-pro-code-area-disabled
+  note: disabled 或 readOnly 时的外层类
+
+# ---------- Picture ----------
+pictureRoot:
+  css: .c7n-pro-picture
+  note: 点击预览仅在 status=loaded 且 preview=true 时生效
+
+pictureImg:
+  css: img.c7n-pro-picture-img.c7n-pro-picture-loaded
+  note: 加载完成后的 img
+
+pictureSpin:
+  css: .c7n-pro-picture-spin
+  note: loading 态；waitReady hidden 用
+
+pictureViewerModal:
+  css: .c7n-pro-picture-viewer-modal
+  note: 预览弹窗的 className；挂载层级以实际 DOM 为准
+
+pictureViewerClose:
+  css: .c7n-pro-picture-viewer-btn-close
+  note: 关闭预览
+
+pictureViewerNavBtn:
+  css: .c7n-pro-picture-viewer-btn-nav
+  note: 上一张 / 下一张共用类；需 nth 区分
+
+# ---------- Typography ----------
+typographyText:
+  css: .c7n-pro-typography-text
+  note: Typography.Text 根；功能层加文案 :text-is 收窄
+
+typographyEllipsis:
+  css: .c7n-pro-typography-ellipsis
+  note: ellipsis 生效时的修饰类
+
+typographyExpand:
+  css: .c7n-pro-typography-expand
+  note: ellipsis.expandable 的展开链接
+
+typographyCopy:
+  css: .c7n-pro-typography-copy
+  note: copyable 的复制按钮
+
+typographyCopySuccess:
+  css: .c7n-pro-typography-copy-success
+  note: 复制成功后的修饰类
+
+# ---------- OverflowTip ----------
+overflowTipPopup:
+  css: .c7n-pro-tooltip-popup
+  note: 仅内容溢出时出现；与普通 Tooltip 同 DOM
+
+overflowTipPopupInner:
+  css: .c7n-pro-tooltip-popup-inner
+  note: tooltip 文案容器
+
+# ---------- choerodon-feedback（见 playbooks/choerodon-feedback.md）----------
+messageNotice:
+  css: .c7n-message-notice
+  note: '全局挂 body；多条并存时用 messageSuccess 收窄'
+
+messageSuccess:
+  css: .c7n-message-custom-content.c7n-message-success
+  note: '成功提示；文案断言用 textContains'
+
+notificationNotice:
+  css: .c7n-notification-notice
+  note: '多条并存时功能层覆盖为带标题的 :has 写法'
+
+notificationClose:
+  css: .c7n-notification-notice-close
+  note: '<a> 而非 button；多条时须收窄到标题'
+
+notificationTitle:
+  css: .c7n-notification-notice-message
+  note: '通知标题'
+
+notificationDescription:
+  css: .c7n-notification-notice-description
+  note: '通知描述'
+
+spinSpinning:
+  css: .c7n-spin.c7n-spin-spinning
+  note: '独立与包裹式均可；多个 Spin 时用 :has 或 within 收窄'
+
+spinBlur:
+  css: .c7n-spin-container.c7n-spin-blur
+  note: '包裹式加载中被模糊的内容区'
+
+spinText:
+  css: .c7n-spin-text
+  note: '仅传 tip 时存在'
+
+progressRoot:
+  css: .c7n-progress
+  note: '功能层用 has 收窄到字段或区域'
+
+progressText:
+  css: .c7n-progress-text
+  note: '百分比文案（showInfo 时）'
+
+progressBg:
+  css: .c7n-progress-bg
+  note: '宽度即百分比'
+
+progressStatusException:
+  css: .c7n-progress.c7n-progress-status-exception
+  note: '异常态'
+
+progressStatusSuccess:
+  css: .c7n-progress.c7n-progress-status-success
+  note: '成功态（100% 且未传 status 时自动）'
+
+skeletonRoot:
+  css: .c7n-skeleton
+  note: '也匹配占位块 Skeleton.Button/Input/Avatar；限定到目标区域'
+
+skeletonActive:
+  css: .c7n-skeleton.c7n-skeleton-active
+  note: '仅表示动画，不作完成判据'
+
+skeletonTitle:
+  css: .c7n-skeleton-title
+  note: 'h3 标题占位'
+
+skeletonParagraph:
+  css: .c7n-skeleton-paragraph
+  note: 'ul 段落占位'
+
+tooltipPopup:
+  css: .c7n-pro-tooltip-popup
+  note: '挂 body；Tooltip.show 单例也匹配；多条同时打开时收窄'
+
+tooltipInner:
+  css: .c7n-pro-tooltip-popup-inner
+  note: '弹层文案容器'
+
+singletonTooltipContainer:
+  css: .c7n-pro-singleton-tooltip-container
+  note: 'Tooltip.show 单例的 body 容器'
