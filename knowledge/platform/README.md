@@ -2,10 +2,12 @@
 
 真相源：`knowledge/platform/choerodon/kit.yaml`
 
-- 同组件在本系统 DOM 一致（Table / filterBar / Page Header / Form / LOV / **Modal Drawer** / **表格行编辑**）
+- 同组件在本系统 DOM 一致（Table / QueryBar / Form / LOV / Select / DatePicker / Modal / Upload / Tabs / Tree / **表格行编辑**）
 - **禁止**逗号并集选择器（如 `.hmes-style, .c7n-pro-table-wrapper`）→ Playwright strict mode
-- Drawer：容器常驻；用 `.c7n-pro-modal-active`（+ 标题）判断打开，未打开时仅 `mask[hidden]`
-- 表格行编辑：表头 `icon-add`、行首 `icon-remove`+Popconfirm；**行内 Lov** 先点可编辑格再点浮层 `.icon-search`；**行内无 href 的 a** 用 text/css（`tableActionLink`），勿 `role=link`；见 [playbooks/choerodon-table-row-edit.md](../playbooks/choerodon-table-row-edit.md)
+- Modal / Drawer：同一 Pro Modal；用 `.c7n-pro-modal-active`；见 [playbooks/choerodon-modal.md](../playbooks/choerodon-modal.md)
+- QueryBar：filterBar 用 refresh 图标；professionalBar 用按钮「查询」；见 [playbooks/choerodon-table-queryBar.md](../playbooks/choerodon-table-queryBar.md)
+- Select ≠ Lov；DatePicker 前缀是 `calendar-picker`；Tabs 是 `c7n-tabs`（非 pro）；见对应 playbooks
+- 表格行编辑：表头 `icon-add`、行首 `icon-remove`+Popconfirm；**行内 Lov** 先点格再 `.icon-search`；无 href 的 a 用 `tableActionLink`；「更多」菜单见 [playbooks/choerodon-row-dropdown.md](../playbooks/choerodon-row-dropdown.md)
 - 引擎合并定位顺序：平台 kit → **功能产物目录**下的 `elements.yaml`（非本仓 Git）→ field_rules 推导 → elements_hints（仅补缺，不覆盖已有 css）
 
 ## DOM 探针 + 人工审核

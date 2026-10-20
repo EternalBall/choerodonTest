@@ -97,27 +97,63 @@ extendAttrBtn:
   role: button
   name: 扩展属性
 
-# Choerodon Pro Modal Drawer：容器常驻，用 active 判断打开（勿用 role=dialog）
+# Choerodon Pro Modal / Drawer（同一组件；详见 knowledge/playbooks/choerodon-modal.md）
+# 容器 .c7n-pro-modal-container 常驻；用 .c7n-pro-modal-active 判断打开（勿用 role=dialog）
+
+# 居中 Modal（drawer:false；排除抽屉以免点到侧栏）
+modal:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active:not(.c7n-pro-modal-drawer)
+  note: 打开态居中弹层；关闭后可能 hidden 或销毁
+
+modalTitle:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active:not(.c7n-pro-modal-drawer) .c7n-pro-modal-title
+
+modalBody:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active:not(.c7n-pro-modal-drawer) .c7n-pro-modal-body
+
+modalConfirm:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active:not(.c7n-pro-modal-drawer) .c7n-pro-modal-footer button.c7n-pro-btn-primary
+  note: okText 默认「确定」；也可用 role=button name=确定（限 within modal）
+
+modalCancel:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active:not(.c7n-pro-modal-drawer) .c7n-pro-modal-footer button.c7n-pro-btn-default
+
+modalClose:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-header-button
+  note: 需 closable:true；居中/抽屉共用
+
+# Drawer（drawer:true）
 drawer:
   css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer.c7n-pro-modal-active
   note: 未打开时仅有 modal-container + mask[hidden]
 
 drawerTitle:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-title
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer.c7n-pro-modal-active .c7n-pro-modal-title
+
+drawerBody:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer.c7n-pro-modal-active .c7n-pro-modal-body
 
 drawerConfirm:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-primary
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-primary
 
 drawerCancel:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-default
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-default
 
 copyDrawer:
   css: '.c7n-pro-modal-wrapper.c7n-pro-modal-drawer.c7n-pro-modal-active:has(.c7n-pro-modal-title:text-is("复制"))'
   note: 功能层可覆盖标题；字段用 input[name]
 
+# Modal.confirm / info / success / error / warning
+confirmModal:
+  css: .c7n-pro-modal-wrapper.c7n-pro-confirm-wrapper.c7n-pro-modal-active
+  note: 与业务表单 Modal、Popconfirm（.c7n-popover）区分
+
+confirmModalOk:
+  css: .c7n-pro-modal-wrapper.c7n-pro-confirm-wrapper.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-primary
+
 lovDialog:
   css: .c7n-pro-modal-wrapper.c7n-pro-modal-active
-  note: 打开态 modal；禁止逗号并集
+  note: Lov 亦为 Modal；打开态；禁止逗号并集；功能层可再收窄
 
 lovConfirm:
   role: button
@@ -166,3 +202,128 @@ tableLovOpen:
 tableActionLink:
   css: .action-link a
   note: 见 playbooks/choerodon-table-row-edit.md「行内操作列」
+
+# ---------- Select / Lookup（非 Lov；见 playbooks/choerodon-select.md）----------
+selectWrapper:
+  css: .c7n-pro-select-wrapper
+  note: 功能层用 :has(input[name=字段])；Lov 也是 select-wrapper 但后缀多为 icon-search
+
+selectTrigger:
+  css: .c7n-pro-select-wrapper .c7n-pro-select-trigger
+  note: 下拉箭头；Lov 勿用此键，用 lov 搜索图标
+
+selectPopup:
+  css: .c7n-pro-select-popup
+  note: 打开态下拉；选项在 .c7n-pro-select-dropdown-menu 内
+
+# ---------- DatePicker（前缀 calendar；见 playbooks/choerodon-date-picker.md）----------
+datePickerWrapper:
+  css: .c7n-pro-calendar-picker-wrapper
+
+datePickerSuffix:
+  css: .c7n-pro-calendar-picker-wrapper .c7n-pro-calendar-picker-suffix
+
+datePickerPopup:
+  css: .c7n-pro-calendar-picker-popup
+
+datePickerCell:
+  css: .c7n-pro-calendar-picker-popup .c7n-pro-calendar-cell-inner
+  note: 避开 .c7n-pro-calendar-disabled
+
+# ---------- Table QueryBar（见 playbooks/choerodon-table-queryBar.md）----------
+professionalQueryBar:
+  css: .c7n-pro-table-professional-query-bar
+
+professionalQueryBtn:
+  role: button
+  name: 查询
+  note: within professionalQueryBar；与 filterBar 的 refresh 图标查询不同
+
+professionalResetBtn:
+  role: button
+  name: 重置
+  note: within professionalQueryBar
+
+professionalMoreBtn:
+  role: button
+  name: 更多
+  note: 展开超出 queryFieldsLimit 的字段
+
+advancedQueryBar:
+  css: .c7n-pro-table-advanced-query-bar
+
+advancedQueryBtn:
+  role: button
+  name: 高级查询
+  note: 打开 drawer Modal；见 choerodon-modal.md
+
+# ---------- 行内更多 Dropdown（见 playbooks/choerodon-row-dropdown.md）----------
+dropdownMenu:
+  css: .c7n-dropdown-menu:not(.c7n-dropdown-menu-hidden)
+  note: 与 filter 的 .c7n-pro-dropdown-popup 区分
+
+dropdownMenuItem:
+  css: .c7n-dropdown-menu:not(.c7n-dropdown-menu-hidden) .c7n-dropdown-menu-item
+
+rowMoreTrigger:
+  role: button
+  name: 更多
+  note: 功能层建议 within 行；文案也可能是「操作」
+
+# ---------- Upload / Attachment（见 playbooks/choerodon-upload.md）----------
+uploadInput:
+  css: .c7n-pro-upload-select input[type="file"]
+  note: Playwright 用 setInputFiles；勿依赖系统文件框
+
+uploadListItem:
+  css: .c7n-pro-upload-list-item
+
+attachmentRoot:
+  css: .c7n-pro-attachment
+
+attachmentListItem:
+  css: .c7n-pro-attachment-list-item
+
+attachmentDrag:
+  css: .c7n-pro-attachment-drag
+
+# ---------- Tabs（c7n-tabs 非 pro；见 playbooks/choerodon-tabs.md）----------
+tabsRoot:
+  css: .c7n-tabs
+
+tabsTab:
+  css: .c7n-tabs-tab
+
+tabsTabActive:
+  css: .c7n-tabs-tab-active
+
+tabPaneActive:
+  css: .c7n-tabs-tabpane:not(.c7n-tabs-tabpane-inactive)
+
+# ---------- Tree / TreeSelect / Cascader（见 playbooks/choerodon-tree.md）----------
+treeRoot:
+  css: .c7n-tree
+
+treeSwitcher:
+  css: .c7n-tree-switcher:not(.c7n-tree-switcher-noop)
+
+treeNodeContent:
+  css: .c7n-tree-node-content-wrapper
+
+treeNodeSelected:
+  css: .c7n-tree-node-content-wrapper.c7n-tree-node-selected
+
+treeSelectWrapper:
+  css: .c7n-pro-tree-select-wrapper
+
+treeSelectPopup:
+  css: .c7n-pro-tree-select-popup
+
+cascaderWrapper:
+  css: .c7n-pro-cascader-wrapper
+
+cascaderMenu:
+  css: .c7n-pro-cascader-menu
+
+cascaderMenuItem:
+  css: .c7n-pro-cascader-menu-item

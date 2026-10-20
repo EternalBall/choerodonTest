@@ -8,9 +8,17 @@
 
 | 文件 | 主题 |
 |------|------|
-| [choerodon-table-filterBar.md](./choerodon-table-filterBar.md) | 列表动态筛选条 |
+| [choerodon-table-filterBar.md](./choerodon-table-filterBar.md) | 列表动态筛选条（filterBar） |
+| [choerodon-table-queryBar.md](./choerodon-table-queryBar.md) | professionalBar / advancedBar / queryBar 对照 |
 | [choerodon-create-detail.md](./choerodon-create-detail.md) | 新建 / 详情 / 编辑状态机 |
 | [choerodon-table-row-edit.md](./choerodon-table-row-edit.md) | 表头编辑、增删行、行内 Lov/Switch、Popconfirm |
+| [choerodon-modal.md](./choerodon-modal.md) | Modal / Drawer / Confirm |
+| [choerodon-select.md](./choerodon-select.md) | Select / Lookup（与 Lov 区分） |
+| [choerodon-date-picker.md](./choerodon-date-picker.md) | DatePicker（calendar-picker） |
+| [choerodon-row-dropdown.md](./choerodon-row-dropdown.md) | 行内「更多」Dropdown / Menu |
+| [choerodon-upload.md](./choerodon-upload.md) | Upload / Attachment |
+| [choerodon-tabs.md](./choerodon-tabs.md) | Tabs（c7n-tabs） |
+| [choerodon-tree.md](./choerodon-tree.md) | Tree / TreeSelect / Cascader |
 | [page-states.md](./page-states.md) | 页面状态与就绪条件 |
 | [row-action.md](./row-action.md) | 行内动作（Radio/Switch 等，非页头保存） |
 | [api-binding.md](./api-binding.md) | 从源码抽取 API 字面量 |

@@ -29,3 +29,5 @@
 ## 关键字
 
 `tableFilterQuery`（mode: filterBar | professionalBar）
+
+professionalBar / advancedBar 的 DOM 与按钮文案见 [choerodon-table-queryBar.md](./choerodon-table-queryBar.md)（勿在本形态下找 button「查询」——filterBar 查询是 refresh 图标）。

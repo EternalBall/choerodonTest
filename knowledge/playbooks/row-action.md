@@ -25,3 +25,5 @@ row_target:
 `api` 须为源码字面量（services / useRequest / 内联 request / DS transport），见 [api-binding.md](./api-binding.md)。
 
 多个同类操作 = 多条 `row_action`，共用模板，换 api / element。
+
+若入口是「更多」下拉再点菜单项，见 [choerodon-row-dropdown.md](./choerodon-row-dropdown.md)（先展开 Menu，再点项）。
