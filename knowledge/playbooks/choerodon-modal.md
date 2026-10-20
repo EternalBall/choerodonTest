@@ -11,7 +11,7 @@
 |------|------|----------------|
 | **居中 Modal** | 无 `-drawer`；页头/工具栏打开填表或确认 | `modal` + `opens: modal` |
 | **Drawer** | 有 `-drawer`（常 `-drawer-slide-right`） | `drawer` + `opens: drawer` |
-| **Lov 弹层** | 也是 Modal；点 `.icon-search` 打开选表 | `lovDialog` + `pickLov`（见 create-detail / row-edit） |
+| **Lov 弹层** | 也是 Modal（或 popup）；点 `.icon-search` 打开选表 | `lovDialog` + `pickLov`（见 [choerodon-lov.md](./choerodon-lov.md)） |
 | **Modal.confirm** | `Modal.confirm/info/success/error/warning` | `.c7n-pro-confirm-wrapper-*` |
 | **Popconfirm** | 行内气泡「是否删除…」 | `.c7n-popover`（见 row-edit；**不是** Modal） |
 

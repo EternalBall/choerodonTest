@@ -14,6 +14,7 @@
 | [choerodon-table-row-edit.md](./choerodon-table-row-edit.md) | 表头编辑、增删行、行内 Lov/Switch、Popconfirm |
 | [choerodon-modal.md](./choerodon-modal.md) | Modal / Drawer / Confirm |
 | [choerodon-select.md](./choerodon-select.md) | Select / Lookup（与 Lov 区分） |
+| [choerodon-lov.md](./choerodon-lov.md) | Lov（lovCode / Modal·Drawer·popup 选表） |
 | [choerodon-date-picker.md](./choerodon-date-picker.md) | DatePicker（calendar-picker） |
 | [choerodon-row-dropdown.md](./choerodon-row-dropdown.md) | 行内「更多」Dropdown / Menu |
 | [choerodon-upload.md](./choerodon-upload.md) | Upload / Attachment |

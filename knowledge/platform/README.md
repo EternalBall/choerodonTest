@@ -6,7 +6,7 @@
 - **禁止**逗号并集选择器（如 `.hmes-style, .c7n-pro-table-wrapper`）→ Playwright strict mode
 - Modal / Drawer：同一 Pro Modal；用 `.c7n-pro-modal-active`；见 [playbooks/choerodon-modal.md](../playbooks/choerodon-modal.md)
 - QueryBar：filterBar 用 refresh 图标；professionalBar 用按钮「查询」；见 [playbooks/choerodon-table-queryBar.md](../playbooks/choerodon-table-queryBar.md)
-- Select ≠ Lov；DatePicker 前缀是 `calendar-picker`；Tabs 是 `c7n-tabs`（非 pro）；见对应 playbooks
+- Select ≠ Lov（`lookupCode` vs `lovCode`）；Lov 见 [playbooks/choerodon-lov.md](../playbooks/choerodon-lov.md)；DatePicker 前缀是 `calendar-picker`；Tabs 是 `c7n-tabs`（非 pro）
 - 表格行编辑：表头 `icon-add`、行首 `icon-remove`+Popconfirm；**行内 Lov** 先点格再 `.icon-search`；无 href 的 a 用 `tableActionLink`；「更多」菜单见 [playbooks/choerodon-row-dropdown.md](../playbooks/choerodon-row-dropdown.md)
 - 引擎合并定位顺序：平台 kit → **功能产物目录**下的 `elements.yaml`（非本仓 Git）→ field_rules 推导 → elements_hints（仅补缺，不覆盖已有 css）
 

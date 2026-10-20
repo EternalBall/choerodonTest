@@ -75,7 +75,7 @@ function resolveDialog(ctx: ActionContext, args: Record<string, unknown>): Locat
   // Choerodon LOV 弹层常见容器
   return page
     .locator(
-      '.c7n-pro-modal-wrapper:visible, .c7n-modal-wrap:visible, .c7n-pro-lov-popup:visible, [role="dialog"]:visible',
+      '.c7n-pro-modal-wrapper:visible, .c7n-modal-wrap:visible, .c7n-pro-select-lov-popup:visible, .c7n-pro-lov-popup:visible, [role="dialog"]:visible',
     )
     .last();
 }
@@ -84,7 +84,7 @@ function resolveDialog(ctx: ActionContext, args: Record<string, unknown>): Locat
 export function visibleLovDialog(page: Page): Locator {
   return page
     .locator(
-      '.c7n-pro-modal-wrapper:visible, .c7n-modal-wrap:visible, .c7n-pro-lov-popup:visible, [role="dialog"]:visible',
+      '.c7n-pro-modal-wrapper:visible, .c7n-modal-wrap:visible, .c7n-pro-select-lov-popup:visible, .c7n-pro-lov-popup:visible, [role="dialog"]:visible',
     )
     .last();
 }

@@ -8,7 +8,7 @@
 | 控件 | 源码线索 | DOM / 交互 |
 |------|----------|------------|
 | **Select / Lookup** | Field `lookupCode` / `options` / `<Select>`；后缀多为下拉箭头 | 点触发 → **下拉菜单**选 option，无 Modal 表 |
-| **Lov** | Field `lovCode` / `<Lov>`；后缀常为 `.icon-search` | 点搜索 → **Modal/Drawer 表**选行 → 确定；用 `pickLov` |
+| **Lov** | Field `lovCode` / `<Lov>`；后缀常为 `.icon-search` | 点搜索 → **Modal/Drawer/popup 表**选行 → 确定；用 `pickLov`（详见 [choerodon-lov.md](./choerodon-lov.md)） |
 | **SelectBox** | `<SelectBox>` | 选项平铺，无下拉（选项少时） |
 
 ## DOM

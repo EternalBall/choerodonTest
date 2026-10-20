@@ -22,7 +22,7 @@
 - **formReady / saveBtn**：优先 `.page-head button:has(.icon-save)` 或 `role=button name=保存`（勿仅用 `.page-head-operator button.c7n-pro-btn-primary`，站点分配等页可能对不上）
 - **字段**：限定 `.page-content input[name=…]`，避免和列表 filterBar 同名字段冲突
 - **保存**：同上 saveBtn
-- **LOV**：点 `.c7n-pro-select-wrapper:has(input[name="primaryUomLov"]) .icon-search`，关键字 `pickLov`（无特定值时默认选表第一行）
+- **LOV**：点 `.c7n-pro-select-wrapper:has(input[name="primaryUomLov"]) .icon-search`，关键字 `pickLov`（无特定值时默认选表第一行）；完整约定见 [choerodon-lov.md](./choerodon-lov.md)
 - **Select/快码**：关键字 `pickSelect`（`name` + `first: true`）；禁止对 Select 填 `${ENV.ATA_SAMPLE}`
 - **站点分配**：详情只读页头按钮 → `history.push(.../site-assignment/:materialId)`；用例须先进详情再点，禁止从列表 goto
 

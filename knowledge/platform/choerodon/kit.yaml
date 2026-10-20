@@ -151,13 +151,22 @@ confirmModal:
 confirmModalOk:
   css: .c7n-pro-modal-wrapper.c7n-pro-confirm-wrapper.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-primary
 
+# ---------- Lov（见 playbooks/choerodon-lov.md）----------
 lovDialog:
   css: .c7n-pro-modal-wrapper.c7n-pro-modal-active
-  note: Lov 亦为 Modal；打开态；禁止逗号并集；功能层可再收窄
+  note: 默认 viewMode=modal/drawer；打开态；禁止逗号并集；功能层可再收窄
 
 lovConfirm:
   role: button
   name: 确定
+
+lovPopup:
+  css: .c7n-pro-select-lov-popup
+  note: viewMode=popup；内含 Table；勿与 .c7n-pro-select-popup（Select 菜单）混淆
+
+lovOpen:
+  css: .c7n-pro-select-wrapper .icon-search
+  note: 功能层必须 :has(input[name=字段])；行内见 tableLovOpen
 
 # ---------- 表格行编辑模式（Table editor + 增删行）----------
 # 典型：页头点「编辑」后 canEdit=true；表头加号增行、行内 Lov/Switch、行首删除 + Popconfirm
