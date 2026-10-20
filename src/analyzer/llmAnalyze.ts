@@ -548,12 +548,13 @@ function normalizeOperation(item: unknown, index: number): Record<string, unknow
   let row_target: Record<string, unknown> | undefined;
   if (rowTargetRaw && typeof rowTargetRaw === 'object') {
     const controlRaw = String(rowTargetRaw.control || 'other');
-    const controls = new Set(['radio', 'switch', 'button', 'link', 'other']);
+    const controls = new Set(['radio', 'switch', 'button', 'link', 'lov', 'other']);
     row_target = {
       area: rowTargetRaw.area != null ? String(rowTargetRaw.area) : undefined,
       control: controls.has(controlRaw) ? controlRaw : 'other',
       column: rowTargetRaw.column != null ? String(rowTargetRaw.column) : undefined,
       element: rowTargetRaw.element != null ? String(rowTargetRaw.element) : undefined,
+      cell_element: rowTargetRaw.cell_element != null ? String(rowTargetRaw.cell_element) : undefined,
     };
   }
 

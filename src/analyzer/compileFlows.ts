@@ -36,7 +36,16 @@ const TOKEN_SYNONYMS: Record<string, string> = {
   toggle_switch: 'toggle',
   switch: 'toggle',
   click_init: 'init',
-  confirm_modal: 'confirm',
+  modal_confirm: 'confirm_modal',
+  confirm_dialog: 'confirm_modal',
+  expand_dropdown: 'open_dropdown',
+  click_dropdown: 'open_dropdown',
+  select_menu_item: 'click_menu_item',
+  click_menu: 'click_menu_item',
+  activate_cell: 'edit_cell',
+  click_cell: 'edit_cell',
+  save_in_drawer: 'drawer_save',
+  drawer_ok: 'drawer_save',
   popconfirm: 'confirm',
   assert_tree_rows: 'assert_rows',
   assert_table_rows: 'assert_rows',
@@ -68,6 +77,11 @@ const MASTER_DETAIL_TOKENS = new Set([
   'open_drawer',
   'open_executed_drawer',
   'open_scanned_drawer',
+  'open_dropdown',
+  'click_menu_item',
+  'edit_cell',
+  'confirm_modal',
+  'drawer_save',
 ]);
 
 const ACTION_TOKENS = new Set([
@@ -364,6 +378,57 @@ function draftFromActionToken(
         name: '选择 Lov',
         kind: 'pick_lov',
         page_id: pageId,
+        // 行内 Lov：触发器为 row_target 的 element（先点格子出现 .c7n-pro-table-editor，再点搜索图标）
+        element: op.row_target?.control === 'lov' ? op.row_target.element : undefined,
+      };
+    case 'open_dropdown':
+      return {
+        id: `open_dropdown_${op.id}`,
+        name: op.entry_control?.name ? `点击${op.entry_control.name}` : '展开下拉',
+        kind: 'click',
+        page_id: pageId,
+        element: entryElement(op) || 'dropdownTrigger',
+        note: 'Dropdown 触发器；菜单挂在 body，之后点 dropdownMenuItem',
+      };
+    case 'click_menu_item':
+      return {
+        id: `click_menu_item_${op.id}`,
+        name: op.row_target?.column || op.name,
+        kind: op.api ? 'click_expect_api' : 'click',
+        page_id: pageId,
+        element: 'dropdownMenuItem',
+        api: op.api,
+        args: { ...(op.api ? { urlIncludes: op.api } : {}), text: op.row_target?.column || op.name },
+        note: '菜单项按文本匹配（.c7n-dropdown-menu-item）',
+      };
+    case 'edit_cell':
+      return {
+        id: `edit_cell_${op.id}`,
+        name: '激活可编辑单元格',
+        kind: 'click',
+        page_id: pageId,
+        element: op.row_target?.cell_element || 'tableEditableRequiredCell',
+        note: '行内编辑器点格才出现',
+      };
+    case 'confirm_modal':
+      return {
+        id: `confirm_modal_${op.id}`,
+        name: '确认（Modal.confirm）',
+        kind: 'click',
+        page_id: pageId,
+        element: 'confirmModalOk',
+        note: 'Modal.confirm 的确定；区别于 Popconfirm 的 confirmBtn',
+      };
+    case 'drawer_save':
+      return {
+        id: `drawer_save_${op.id}`,
+        name: '保存（抽屉内容区）',
+        kind: op.api ? 'click_expect_api' : 'click',
+        page_id: pageId,
+        element: 'drawerBodySaveBtn',
+        api: op.api,
+        args: op.api ? { urlIncludes: op.api } : undefined,
+        note: '抽屉 okButton=false，保存在内容区(drawerBody)，非 footer 的 drawerConfirm',
       };
     case 'add_line':
       return {
@@ -486,13 +551,17 @@ function masterDetailSteps(
   gotoStepsFor(basePage, pages, edges, op, entryRoute).forEach(push);
 
   let terminal = false;
-  for (const tok of normalizeExecutionChain(op.execution_chain, pageIds)) {
-    if (pageIds.has(tok)) continue; // 页面 token 已由导航覆盖
-    if (tok === 'cancel') continue;
+  let inDrawer = false;
+  for (const rawTok of normalizeExecutionChain(op.execution_chain, pageIds)) {
+    if (pageIds.has(rawTok)) continue; // 页面 token 已由导航覆盖
+    if (rawTok === 'cancel') continue;
+    if (rawTok === 'open_drawer') inDrawer = true;
+    // 抽屉里的保存按钮在内容区（okButton=false），不是 footer 的 drawerConfirm
+    const tok = inDrawer && rawTok === 'save' ? 'drawer_save' : rawTok;
     const d = draftFromActionToken(tok, op, basePage);
     if (d) {
       push(d);
-      if (tok === 'save' || tok === 'delete') terminal = true;
+      if (tok === 'save' || tok === 'delete' || tok === 'drawer_save' || tok === 'click_menu_item') terminal = true;
       continue;
     }
     // 未知蛇形 token → 终端动作
@@ -513,7 +582,8 @@ function masterDetailSteps(
   // 终端动作后还有确认弹窗（Modal.confirm/Popconfirm）时，接口是在确认之后才发出：
   // 把 click_expect_api 从动作按钮挪到确认按钮上
   const actIdx = steps.findIndex((s) => s.id === `action_${op.id}`);
-  const cfmIdx = steps.findIndex((s, i) => i > actIdx && s.id === `confirm_${op.id}`);
+  const cfmIdx = steps.findIndex((s, i) => i > actIdx && (s.id === `confirm_${op.id}` || s.id === `confirm_modal_${op.id}`),
+  );
   if (actIdx >= 0 && cfmIdx > actIdx && steps[actIdx]!.api) {
     const act = steps[actIdx]!;
     steps[cfmIdx] = {

@@ -152,11 +152,13 @@ export const RowTargetSchema = z.object({
   /** 所在区域，如 secondaryUomTable */
   area: z.string().optional(),
   /** 控件形态 */
-  control: z.enum(['radio', 'switch', 'button', 'link', 'other']).optional(),
+  control: z.enum(['radio', 'switch', 'button', 'link', 'lov', 'other']).optional(),
   /** 列/字段名，如 defaultFlag */
   column: z.string().optional(),
   /** 元素库 key，如 defaultSecondaryUomRadio */
   element: z.string().optional(),
+  /** 行内编辑器需先点击的单元格元素 key（Lov/Switch 等行内编辑） */
+  cell_element: z.string().optional(),
 });
 
 /** related_page / 跳转入口：显式控件，禁止 gen 猜元素 key */

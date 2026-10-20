@@ -275,7 +275,7 @@ describe('头行联动与抽屉', () => {
           type: 'row_action',
           page_id: 'list',
           api: '/v1/x/sign',
-          execution_chain: ['list', 'query', 'click_header_row', 'select_line_row', 'sign', 'confirm'],
+          execution_chain: ['list', 'query', 'click_header_row', 'select_line_row', 'sign', 'confirm_modal'],
         },
         {
           id: 'mlt',
@@ -312,7 +312,7 @@ describe('头行联动与抽屉', () => {
         'click_header_row_list',
         'select_line_row_list',
         'action_sign',
-        'confirm_sign',
+        'confirm_modal_sign',
       ],
     );
     assert.equal(steps[4]!.kind, 'click');
@@ -329,9 +329,54 @@ describe('头行联动与抽屉', () => {
       'select_line_row_list',
       'open_drawer_mlt',
       'fill_mlt',
-      'save_mlt',
+      'drawer_save_mlt',
     ]);
+    const save = steps.find((s) => s.id === 'drawer_save_mlt')!;
+    assert.equal(save.element, 'drawerBodySaveBtn');
+    assert.equal(save.kind, 'click_expect_api');
     assert.equal(steps.find((s) => s.id === 'open_drawer_mlt')!.element, 'createMltBtn');
+  });
+
+  it('Modal.confirm 用 confirmModalOk，Popconfirm 的 confirm 仍是 confirmBtn', () => {
+    const a = compileMetaOpsAndFlows(art(), { force: true });
+    assert.equal(kinds(a, 'sign').pop()!.element, 'confirmModalOk');
+  });
+
+  it('下拉菜单：先点触发按钮，再按文本点菜单项，接口挂在菜单项上', () => {
+    const base = art();
+    base.operations!.push({
+      id: 'st',
+      name: '状态变更-取消',
+      type: 'row_action',
+      page_id: 'list',
+      api: '/v1/x/status',
+      entry_control: { kind: 'button', name: '状态变更', element: 'changeStatusBtn' },
+      row_target: { control: 'button', column: '取消' },
+      execution_chain: ['list', 'query', 'select_header_row', 'open_dropdown', 'click_menu_item'],
+    } as never);
+    const steps = kinds(compileMetaOpsAndFlows(base, { force: true }), 'st');
+    const tail = steps.slice(-2);
+    assert.equal(tail[0]!.element, 'changeStatusBtn');
+    assert.equal(tail[1]!.element, 'dropdownMenuItem');
+    assert.equal(tail[1]!.kind, 'click_expect_api');
+    assert.equal((tail[1]!.args as { text?: string }).text, '取消');
+  });
+
+  it('行内 Lov：先点单元格，再 pick_lov 且用行内触发器', () => {
+    const base = art();
+    base.operations!.push({
+      id: 'loc',
+      name: '改库位',
+      type: 'update',
+      page_id: 'list',
+      row_target: { control: 'lov', column: 'locator', element: 'locatorLovIcon', cell_element: 'locatorCell' },
+      execution_chain: ['list', 'query', 'click_header_row', 'edit', 'edit_cell', 'pick_lov'],
+    } as never);
+    const steps = kinds(compileMetaOpsAndFlows(base, { force: true }), 'loc');
+    const tail = steps.slice(-2);
+    assert.equal(tail[0]!.element, 'locatorCell');
+    assert.equal(tail[1]!.kind, 'pick_lov');
+    assert.equal(tail[1]!.element, 'locatorLovIcon');
   });
 
   it('external 目标页：在来源页点边上的控件，而不是 goto 外部页', () => {
