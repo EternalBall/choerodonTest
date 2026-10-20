@@ -98,7 +98,14 @@ const JSON_SCHEMA_HINT = `{
       "initial_mode": "view",
       "unlock": "click:editBtn",
       "preconditions": ["enter_detail", "click:editBtn"],
-      "execution_chain": ["list", "detail", "edit", "fill", "save"],
+      "steps": [
+        { "kind": "goto", "name": "进入列表", "page_id": "list", "evidence": "routes 配置" },
+        { "kind": "filter_query", "name": "查询", "page_id": "list" },
+        { "kind": "open_detail", "name": "打开详情", "page_id": "list", "evidence": "MaterialList#columns 物料编码链接" },
+        { "kind": "click", "name": "点击编辑", "page_id": "detail", "element": "editBtn", "evidence": "MaterialDetail#Header 编辑按钮" },
+        { "kind": "fill_form", "name": "改表单", "page_id": "detail", "args": { "fields": ["materialName"] } },
+        { "kind": "click_expect_api", "name": "保存", "page_id": "detail", "element": "saveBtn", "api": "/v1/{tenantId}/mt-material/save/ui", "evidence": "MaterialDetail#handleSave" }
+      ],
       "from_state": "detail_view",
       "to_state": "detail_edit"
     },
@@ -315,13 +322,23 @@ F. **接口识别（api-binding）**：
    - 跳转其他页 → related_page（entry、entry_control、preconditions、scope）
      行内 a[onClick] 无 href：entry_control.kind 可为 link，但 elements_hints 须用 text/css（.action-link a），禁止 role=link
    - 禁止把设默认、行启用等标成 update
-4. 每个 operation 尽量填 page_id、scope、preconditions、unlock、api；**不必写 execution_chain**（本地编译器会按 type 生成 meta_ops/flows 并反写 chain）
+4. 每个 operation 尽量填 page_id、scope、preconditions、unlock、api
+11. **每个 operation 必须写 steps（有序执行步骤，这是测试流程的主依据）**：
+   - 每步 {kind, name, page_id?, element?, api?, args?, note?, evidence}
+   - kind 只能是：goto | filter_query | assert_table_rows | open_detail | click | fill | fill_form | pick_lov | click_expect_api | assert | set_var
+   - 第一步必须是 goto（page_id 取 pages[].id；详情页等带 :id 的路由，先 goto 列表再 open_detail 或点链接）
+   - click / click_expect_api 必须写 element：优先用平台 kit 已有键（见 PLAYBOOK 与 kit），否则在 elements_hints 里给出同名定义；禁止凭空编名字
+   - 会发请求的最后一步用 click_expect_api，api 必须是源码字面量且出现在 apis[]；若点击后还有确认弹窗（Modal.confirm→confirmModalOk；Popconfirm→confirmBtn），接口断言放在确认那一步
+   - 严格按手册还原交互：下拉菜单=先点触发按钮再点 dropdownMenuItem；抽屉内容区按钮（okButton:false）定位在 drawerBody 内；行内编辑=先点单元格再操作编辑器；头行联动表=先点头行再勾行
+   - evidence 写依据（源码 文件#函数 或 手册名），拿不准的步骤在 note 里说明，不要编造
+   - 依赖其它操作产生的数据（如先创建再删除）：在 preconditions 写明，steps 里不重复创建
+   - execution_chain 可不写
 5. apis / elements_hints 为数组；api 来自源码字面量，禁止猜测
 6. **entry.route / pages[].route 必须是前端 SPA 路由**（如 /hwms/.../list），禁止写成 /v1/... 或 services 里的 API 路径；API 只进 operation.api 与 apis[]
 7. notes 写清自动化陷阱与跨功能停止点
 8. review_suggestions.status 固定 pending_human_review
 9. assert_checklist 含：会 clickExpectApi 的 op.api 可在源码/apis 中核对；entry.route 非 API
-10. **不要输出 meta_ops / flows**（由引擎确定性编译；输出也会被丢弃）
+10. **不要输出 meta_ops / flows**（由引擎根据 steps 编译并校验；输出也会被丢弃）
 
 【输出示例】
 ${JSON_SCHEMA_HINT}`;
@@ -607,7 +624,29 @@ function normalizeOperation(item: unknown, index: number): Record<string, unknow
           : undefined,
     api_kind: normalizeApiKind(op.api_kind ?? op.apiKind),
     row_target,
+    steps: normalizeSteps(op.steps),
   };
+}
+
+function normalizeSteps(raw: unknown): Array<Record<string, unknown>> | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = raw
+    .filter((x) => x && typeof x === 'object')
+    .map((x) => {
+      const o = x as Record<string, unknown>;
+      const str = (v: unknown) => (v != null && String(v) !== '' ? String(v) : undefined);
+      return {
+        kind: String(o.kind ?? ''),
+        name: String(o.name ?? o.kind ?? ''),
+        page_id: str(o.page_id ?? o.pageId),
+        element: str(o.element),
+        api: str(o.api),
+        args: o.args && typeof o.args === 'object' && !Array.isArray(o.args) ? o.args : undefined,
+        note: str(o.note),
+        evidence: str(o.evidence),
+      };
+    });
+  return out.length ? out : undefined;
 }
 
 function normalizeApiKind(raw: unknown): string | undefined {

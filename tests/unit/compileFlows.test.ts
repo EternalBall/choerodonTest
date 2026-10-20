@@ -385,3 +385,74 @@ describe('头行联动与抽屉', () => {
     assert.equal(steps[steps.length - 1]!.element, 'poLink');
   });
 });
+
+describe('模型直出 steps', () => {
+  const mk = (steps: unknown[], extra: Partial<FeatureArtifact> = {}) =>
+    baseArtifact({
+      apis: ['/v1/{tenantId}/x/save'],
+      operations: [
+        {
+          id: 'op1',
+          name: '保存',
+          type: 'update',
+          page_id: 'config',
+          steps,
+        } as never,
+      ],
+      ...extra,
+    });
+  const good = [
+    { kind: 'goto', name: '进入', page_id: 'config' },
+    { kind: 'click', name: '编辑', page_id: 'config', element: 'editBtn' },
+    { kind: 'click_expect_api', name: '保存', element: 'saveBtn', api: '/v1/{tenantId}/x/save' },
+  ];
+  const known = ['editBtn', 'saveBtn'];
+
+  it('校验通过 → 采用模型步骤，api 断言带 urlIncludes', () => {
+    const a = compileMetaOpsAndFlows(mk(good), { force: true, knownElements: known });
+    assert.equal(a.operations[0]!.step_source, 'llm_steps');
+    const last = a.meta_ops!.find((m) => m.id === 'op1_s3')!;
+    assert.equal(last.kind, 'click_expect_api');
+    assert.deepEqual(last.args, { urlIncludes: '/v1/{tenantId}/x/save' });
+    assert.equal(a.meta_ops!.find((m) => m.id === 'goto_config')!.args?.path, '/tarzan/problem-field-config');
+  });
+
+  it('未知 kind / 未定义元素 / 编造接口 / 首步非 goto → 回退模板并写入 risks', () => {
+    const bad = [
+      { kind: 'click', name: '点', element: 'ghostBtn' },
+      { kind: 'teleport', name: '飞' },
+      { kind: 'click_expect_api', name: '存', element: 'saveBtn', api: '/v1/made/up' },
+    ];
+    const a = compileMetaOpsAndFlows(
+      mk(bad, { review_suggestions: { status: 'pending_human_review', confidence: 0.5, risks: [] } as never }),
+      { force: true, knownElements: known },
+    );
+    assert.equal(a.operations[0]!.step_source, 'template');
+    const risks = a.review_suggestions!.risks!.join('\n');
+    assert.match(risks, /ghostBtn/);
+    assert.match(risks, /teleport/);
+    assert.match(risks, /made\/up/);
+    assert.match(risks, /第一步必须是 goto/);
+  });
+
+  it('不传 knownElements 时跳过元素定义检查', () => {
+    const a = compileMetaOpsAndFlows(
+      mk([{ kind: 'goto', name: '进入', page_id: 'config' }, { kind: 'click', name: '点', element: 'anything' }]),
+      { force: true },
+    );
+    assert.equal(a.operations[0]!.step_source, 'llm_steps');
+  });
+
+  it('goto 带路径参数的页面被拒绝', () => {
+    const a = compileMetaOpsAndFlows(
+      mk([{ kind: 'goto', name: '进详情', page_id: 'd' }], {
+        pages: [
+          { id: 'config', name: '列表', route: '/a/list', scope: 'in_feature' },
+          { id: 'd', name: '详情', route: '/a/detail/:id', scope: 'in_feature' },
+        ],
+      }),
+      { force: true },
+    );
+    assert.equal(a.operations[0]!.step_source, 'template');
+  });
+});

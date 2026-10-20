@@ -198,6 +198,19 @@ export const PageEdgeSchema = z.object({
   note: z.string().optional(),
 });
 
+/** 大模型直接给出的执行步骤；kind 必须落在 MetaOpKind 白名单内，由 validateSteps 校验 */
+export const OperationStepSchema = z.object({
+  kind: z.string(),
+  name: z.string(),
+  page_id: z.string().optional(),
+  element: z.string().optional(),
+  api: z.string().optional(),
+  args: z.record(z.unknown()).optional(),
+  note: z.string().optional(),
+  /** 依据：源码位置或手册条目，便于人工复核 */
+  evidence: z.string().optional(),
+});
+
 export const OperationSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -242,6 +255,10 @@ export const OperationSchema = z.object({
     .optional(),
   /** 行内动作目标 */
   row_target: RowTargetSchema.optional(),
+  /** 大模型直接给出的有序步骤；校验通过则优先于规则模板 */
+  steps: z.array(OperationStepSchema).optional(),
+  /** 编译来源：llm_steps=采用模型步骤；template=规则模板（含校验失败回退） */
+  step_source: z.enum(['llm_steps', 'template']).optional(),
 });
 
 /** 元操作 kind：与 keywords action 对齐，供流程编排 */

@@ -15,6 +15,8 @@ import type {
   PageNode,
 } from '../core/schema.js';
 
+import { collectKnownElements, validateOperationSteps, type ValidatedStep } from './validateSteps.js';
+
 type Operation = FeatureArtifact['operations'][number];
 
 /** 开放词 → 规范 token（用于吃掉 LLM 残留 chain） */
@@ -957,6 +959,17 @@ function isRowEditDelete(op: Operation, hasRowGate: boolean): boolean {
   );
 }
 
+/** 模型步骤 → DraftStep；goto/filter_query 按页去重复用，其余按操作隔离 */
+function llmDraft(op: Operation, s: ValidatedStep, i: number): DraftStep {
+  const id =
+    s.kind === 'goto' || s.kind === 'filter_query'
+      ? `${s.kind}_${s.page_id ?? 'main'}`
+      : `${op.id}_s${i + 1}`;
+  const args =
+    s.kind === 'click_expect_api' && s.api ? { urlIncludes: s.api, ...(s.args ?? {}) } : s.args;
+  return { id, name: s.name, kind: s.kind, page_id: s.page_id, element: s.element, api: s.api, args, note: s.note };
+}
+
 function stepsToFlow(op: Operation, metaIds: string[]): Flow {
   const nodes: FlowNode[] = metaIds.map((meta_op_id, i) => ({
     id: `${op.id}_n${i}`,
@@ -985,7 +998,7 @@ function stepsToFlow(op: Operation, metaIds: string[]): Flow {
  */
 export function compileMetaOpsAndFlows(
   artifact: FeatureArtifact,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; knownElements?: Iterable<string> },
 ): FeatureArtifact {
   if (artifact.flows?.length && artifact.meta_ops?.length && !opts?.force) {
     return artifact;
@@ -998,25 +1011,48 @@ export function compileMetaOpsAndFlows(
   const flows: Flow[] = [];
   // 同页存在 row_gate 说明有「仅未落库行可操作」的行级门禁，供 delete 判定行编辑模式
   const hasRowGate = (artifact.field_rules ?? []).some((r) => Boolean(r.row_gate));
+  const known = opts?.knownElements ? collectKnownElements(artifact, opts.knownElements) : undefined;
+  const stepIssues: string[] = [];
   const operations = (artifact.operations ?? []).map((op) => {
-    const drafts = templateStepsForOp(
-      op,
-      pages,
-      pageIds,
-      entryRoute,
-      hasRowGate,
-      artifact.page_edges ?? [],
-    );
+    let drafts: DraftStep[] | undefined;
+    let stepSource: 'llm_steps' | 'template' = 'template';
+    if (op.steps?.length) {
+      const v = validateOperationSteps(op, artifact, known);
+      if (v.ok) {
+        drafts = v.steps.map((s, i) =>
+          s.kind === 'goto' ? draftGoto(s.page_id!, pages, op, entryRoute) : llmDraft(op, s, i),
+        );
+        stepSource = 'llm_steps';
+      } else {
+        for (const it of v.issues) {
+          stepIssues.push(`${it.op}${it.step != null ? `#${it.step + 1}` : ''}: ${it.message}`);
+        }
+      }
+    }
+    drafts ??= templateStepsForOp(op, pages, pageIds, entryRoute, hasRowGate, artifact.page_edges ?? []);
     const metaIds = drafts.map((d) => ensureMeta(metaMap, d));
     flows.push(stepsToFlow(op, metaIds));
     return {
       ...op,
+      step_source: stepSource,
       execution_chain: metaIds,
     };
   });
+  const rs = artifact.review_suggestions;
+  const review_suggestions =
+    stepIssues.length && rs
+      ? {
+          ...rs,
+          risks: [
+            ...(rs.risks ?? []).filter((r) => !r.startsWith('模型步骤校验未通过')),
+            ...stepIssues.map((m) => `模型步骤校验未通过，已回退规则模板 → ${m}`),
+          ],
+        }
+      : rs;
 
   return {
     ...artifact,
+    ...(review_suggestions ? { review_suggestions } : {}),
     operations,
     meta_ops: [...metaMap.values()],
     flows,

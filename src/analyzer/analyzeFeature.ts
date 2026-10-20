@@ -1,6 +1,7 @@
 import { logger } from '../core/logger.js';
 import type { FeatureArtifact } from '../core/schema.js';
 import { loadPlaybooksForSources } from '../knowledge/loadPlaybooks.js';
+import { loadFeatureElementsOverlay, loadPlatformKit } from '../knowledge/platformKit.js';
 import { compileMetaOpsAndFlows } from './compileFlows.js';
 import { retrieveFeatureCode } from './retrieve.js';
 import { extractFieldFacts } from './staticExtract.js';
@@ -34,7 +35,11 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
     playbooks,
     maxTotalChars: opts.featureDir ? FEATURE_DIR_MAX_TOTAL_CHARS : undefined,
   });
-  const artifact = compileMetaOpsAndFlows(raw, { force: true });
+  const knownElements = [
+    ...Object.keys(await loadPlatformKit()),
+    ...Object.keys(await loadFeatureElementsOverlay(opts.feature)),
+  ];
+  const artifact = compileMetaOpsAndFlows(raw, { force: true, knownElements });
   // 字段事实由 AST 确定性提取，不让 LLM 参与，保证同源码两次分析结果一致
   artifact.field_facts = extractFieldFacts(snippets);
   logger.info(
