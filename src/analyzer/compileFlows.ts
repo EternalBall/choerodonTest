@@ -11,6 +11,7 @@ import type {
   FlowNode,
   MetaOp,
   MetaOpKind,
+  PageEdge,
   PageNode,
 } from '../core/schema.js';
 
@@ -172,6 +173,72 @@ function draftGoto(
   };
 }
 
+/**
+ * 到达目标页的步骤。带路径参数（route 含 ':'）的页面无法直接 goto，
+ * 改为从入口页出发沿 page_edges 最短路径逐边导航；找不到路径则回退为单个 goto。
+ */
+function gotoStepsFor(
+  pageId: string,
+  pages: PageNode[],
+  edges: PageEdge[],
+  op: Operation,
+  entryRoute?: string,
+): DraftStep[] {
+  const fallback = [draftGoto(pageId, pages, op, entryRoute)];
+  const target = pages.find((p) => p.id === pageId);
+  if (!target?.route?.includes(':')) return fallback;
+
+  const entry =
+    (entryRoute ? pages.find((p) => p.route === entryRoute) : undefined) ??
+    pages.find((p) => p.scope === 'in_feature' && p.route && !p.route.includes(':'));
+  if (!entry || entry.id === pageId) return fallback;
+
+  // BFS：prev 记录到达某页所用的边
+  const prev = new Map<string, PageEdge>();
+  const seen = new Set([entry.id]);
+  const queue = [entry.id];
+  while (queue.length && !seen.has(pageId)) {
+    const cur = queue.shift()!;
+    for (const e of edges) {
+      if (e.from_page !== cur || seen.has(e.to_page)) continue;
+      seen.add(e.to_page);
+      prev.set(e.to_page, e);
+      queue.push(e.to_page);
+    }
+  }
+  if (!seen.has(pageId)) return fallback;
+
+  const path: PageEdge[] = [];
+  for (let cur = pageId; cur !== entry.id; ) {
+    const e = prev.get(cur)!;
+    path.unshift(e);
+    cur = e.from_page;
+  }
+
+  const steps: DraftStep[] = [draftGoto(entry.id, pages, op, entryRoute)];
+  for (const e of path) {
+    const edgeName = e.id || `${e.from_page}_${e.to_page}`;
+    if (e.via === 'row_link') {
+      steps.push({
+        id: `open_detail_${e.from_page}`,
+        name: e.control?.name || '打开详情',
+        kind: 'open_detail',
+        page_id: e.from_page,
+        element: e.control?.element,
+      });
+    } else {
+      steps.push({
+        id: `click_${edgeName}`,
+        name: e.control?.name || edgeName,
+        kind: 'click',
+        page_id: e.from_page,
+        element: e.control?.element,
+      });
+    }
+  }
+  return steps;
+}
+
 function draftFromActionToken(
   token: string,
   op: Operation,
@@ -311,25 +378,27 @@ function templateStepsForOp(
   pageIds: Set<string>,
   entryRoute?: string,
   hasRowGate = false,
+  edges: PageEdge[] = [],
 ): DraftStep[] {
   const pageId = pageIdOf(op, pages, entryRoute);
   const steps: DraftStep[] = [];
   const push = (d: DraftStep) => {
     if (!steps.some((s) => s.id === d.id)) steps.push(d);
   };
+  const pushAll = (ds: DraftStep[]) => ds.forEach(push);
 
   // 前置：preconditions 中可识别 token
   for (const pre of op.preconditions ?? []) {
     const tok = normalizeChainToken(pre, pageIds);
     if (!tok) continue;
     if (pageIds.has(tok)) {
-      push(draftGoto(tok, pages, op, entryRoute));
+      pushAll(gotoStepsFor(tok, pages, edges, op, entryRoute));
       continue;
     }
     if (tok === 'detail' || tok === 'enter_detail') {
       // 先到列表再开详情
       const listPage = pages.find((p) => /list/i.test(p.id))?.id;
-      if (listPage) push(draftGoto(listPage, pages, op, entryRoute));
+      if (listPage) pushAll(gotoStepsFor(listPage, pages, edges, op, entryRoute));
       push({
         id: `open_detail_${pageId}`,
         name: '打开详情',
@@ -344,7 +413,7 @@ function templateStepsForOp(
 
   switch (op.type) {
     case 'query': {
-      push(draftGoto(pageId, pages, op, entryRoute));
+      pushAll(gotoStepsFor(pageId, pages, edges, op, entryRoute));
       push({
         id: `filter_query_${pageId}`,
         name: op.name || '查询',
@@ -363,7 +432,7 @@ function templateStepsForOp(
     }
     case 'detail': {
       const listPage = pages.find((p) => /list/i.test(p.id))?.id ?? pageId;
-      push(draftGoto(listPage, pages, op, entryRoute));
+      pushAll(gotoStepsFor(listPage, pages, edges, op, entryRoute));
       push({
         id: `open_detail_${op.id}`,
         name: op.name || '打开详情',
@@ -374,8 +443,25 @@ function templateStepsForOp(
       break;
     }
     case 'create': {
-      push(draftGoto(pageId, pages, op, entryRoute));
-      if (op.opens === 'page' || op.initial_mode === 'create') {
+      pushAll(gotoStepsFor(pageId, pages, edges, op, entryRoute));
+      if (isRowEditDelete(op, hasRowGate)) {
+        // 表格行编辑模式下的「增行」：没有页头「新建」按钮，需先进编辑再点增行
+        // （isRowEditDelete 的判定条件对增行同样适用：需先点编辑 + 行级门禁/增行描述）
+        push({
+          id: `click_edit_${pageId}`,
+          name: '编辑',
+          kind: 'click',
+          page_id: pageId,
+          element: unlockElement(op) || 'editBtn',
+        });
+        push({
+          id: `add_line_${op.id}`,
+          name: '增行',
+          kind: 'click',
+          page_id: pageId,
+          element: 'addLineBtn',
+        });
+      } else if (op.opens === 'page' || op.initial_mode === 'create') {
         // 可能已在 create 路由；仍保留填表+保存
       } else {
         push({
@@ -405,7 +491,7 @@ function templateStepsForOp(
       break;
     }
     case 'update': {
-      push(draftGoto(pageId, pages, op, entryRoute));
+      pushAll(gotoStepsFor(pageId, pages, edges, op, entryRoute));
       const unlock = unlockElement(op);
       if (unlock || op.initial_mode === 'view') {
         push({
@@ -435,7 +521,7 @@ function templateStepsForOp(
       break;
     }
     case 'copy': {
-      push(draftGoto(pageId, pages, op, entryRoute));
+      pushAll(gotoStepsFor(pageId, pages, edges, op, entryRoute));
       push({
         id: `click_copy_${op.id}`,
         name: '复制',
@@ -460,7 +546,7 @@ function templateStepsForOp(
       break;
     }
     case 'delete': {
-      push(draftGoto(pageId, pages, op, entryRoute));
+      pushAll(gotoStepsFor(pageId, pages, edges, op, entryRoute));
       if (isRowEditDelete(op, hasRowGate)) {
         // 表格行编辑模式：已落库行不可删（row_gate 限制），固定模板的「点删除」无目标行会失败。
         // 改为：进编辑 → 增行造出未落库行 → 删该行 → Popconfirm 确认 → 保存落库。
@@ -532,7 +618,10 @@ function templateStepsForOp(
       break;
     }
     case 'related_page': {
-      push(draftGoto(pageId, pages, op, entryRoute));
+      const nav = gotoStepsFor(pageId, pages, edges, op, entryRoute);
+      pushAll(nav);
+      // 多于 1 步说明 pageId 本身是经边点击进入的页面，点击已包含在导航中，不再重复 open_related
+      if (nav.length > 1) break;
       push({
         id: `open_related_${op.id}`,
         name: op.name || '打开关联页',
@@ -544,7 +633,7 @@ function templateStepsForOp(
       break;
     }
     case 'table_picker': {
-      push(draftGoto(pageId, pages, op, entryRoute));
+      pushAll(gotoStepsFor(pageId, pages, edges, op, entryRoute));
       push({
         id: `pick_lov_${op.id}`,
         name: op.name || '选择 Lov',
@@ -555,7 +644,7 @@ function templateStepsForOp(
       break;
     }
     case 'row_action': {
-      push(draftGoto(pageId, pages, op, entryRoute));
+      pushAll(gotoStepsFor(pageId, pages, edges, op, entryRoute));
       // 行内动作常依赖查询有数
       if (!steps.some((s) => s.kind === 'filter_query')) {
         push({
@@ -587,13 +676,13 @@ function templateStepsForOp(
     }
     case 'other':
     default: {
-      push(draftGoto(pageId, pages, op, entryRoute));
+      pushAll(gotoStepsFor(pageId, pages, edges, op, entryRoute));
       // 尝试用归一后的 LLM chain 动作 token 补步骤
       const normalized = normalizeExecutionChain(op.execution_chain, pageIds);
       let addedAction = false;
       for (const tok of normalized) {
         if (pageIds.has(tok)) {
-          push(draftGoto(tok, pages, op, entryRoute));
+          pushAll(gotoStepsFor(tok, pages, edges, op, entryRoute));
           continue;
         }
         const d = draftFromActionToken(tok, op, pageId);
@@ -680,7 +769,14 @@ export function compileMetaOpsAndFlows(
   // 同页存在 row_gate 说明有「仅未落库行可操作」的行级门禁，供 delete 判定行编辑模式
   const hasRowGate = (artifact.field_rules ?? []).some((r) => Boolean(r.row_gate));
   const operations = (artifact.operations ?? []).map((op) => {
-    const drafts = templateStepsForOp(op, pages, pageIds, entryRoute, hasRowGate);
+    const drafts = templateStepsForOp(
+      op,
+      pages,
+      pageIds,
+      entryRoute,
+      hasRowGate,
+      artifact.page_edges ?? [],
+    );
     const metaIds = drafts.map((d) => ensureMeta(metaMap, d));
     flows.push(stepsToFlow(op, metaIds));
     return {

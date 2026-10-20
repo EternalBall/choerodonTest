@@ -40,6 +40,7 @@ import { extractFieldFacts } from '../analyzer/staticExtract.js';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import readline from 'node:readline';
 import { LlmHandoffPendingError } from '../analyzer/deepseekClient.js';
+import { compileMetaOpsAndFlows } from '../analyzer/compileFlows.js';
 
 dotenv.config();
 
@@ -148,6 +149,23 @@ program
     // stdout 只放 YAML，计数走 stderr，方便管道重定向
     process.stdout.write(stringifyYaml({ field_facts: facts }));
     console.error(`字段总数: ${facts.length}`);
+  });
+
+program
+  .command('recompile')
+  .description(
+    '用当前编译器强制重编 feature.yaml 的 meta_ops/flows（编译规则升级后使用；不调用 LLM，会覆盖已有 flows，原文件备份为 .bak）',
+  )
+  .requiredOption('-i, --input <file>', 'artifacts/<slug>/feature.yaml')
+  .action(async (opts: { input: string }) => {
+    const raw = await fs.readFile(opts.input, 'utf8');
+    const artifact = FeatureArtifactSchema.parse(parseYaml(raw));
+    const next = compileMetaOpsAndFlows(artifact, { force: true });
+    await fs.writeFile(`${opts.input}.bak`, raw, 'utf8');
+    await fs.writeFile(opts.input, stringifyYaml(next), 'utf8');
+    console.log(
+      `✓ 已重编: ${opts.input}（meta_ops ${next.meta_ops?.length ?? 0}，flows ${next.flows?.length ?? 0}；备份 ${opts.input}.bak）`,
+    );
   });
 
 program
@@ -268,13 +286,16 @@ program
   .description('执行 suite YAML（逐步截图 + HTML 报告）')
   .option('-c, --case <file>', 'suite yaml')
   .option('--skip-auth', '跳过登录态（本地 demo）')
-  .action(async (opts: { case?: string; skipAuth?: boolean }) => {
+  .option('-g, --grep <pattern>', '只运行标题匹配的用例（正则，匹配 "<case.id> <title>"），如先只跑只读用例')
+  .action(async (opts: { case?: string; skipAuth?: boolean; grep?: string }) => {
     await ensureDirs();
     const caseFile = opts.case || path.join(PATHS.cases, 'example-smoke.yaml');
     process.env.ATA_CASE_FILE = path.resolve(caseFile);
     if (opts.skipAuth) process.env.SKIP_AUTH = '1';
     console.log(`执行: ${process.env.ATA_CASE_FILE}`);
-    const code = await runPlaywright([]);
+    // 正则放进双引号；内部双引号转义，避免 shell:true 下被拆分
+    const grepArgs = opts.grep ? ['--grep', `"${opts.grep.replace(/"/g, '\\"')}"`] : [];
+    const code = await runPlaywright(grepArgs);
     if (code === 0) console.log('\n✓ 完成: pnpm report');
     process.exit(code);
   });

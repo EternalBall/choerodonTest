@@ -14,7 +14,15 @@ export async function pickLov(
   await ctx.el(openRef).click();
 
   const dialog = resolveDialog(ctx, args);
-  await expect(dialog).toBeVisible({ timeout: 30_000 });
+  // 表格内 LOV 在候选仅 1 条时会直接回填、不弹层：5s 内未出现弹层则视为已自动选中
+  const shown = await dialog
+    .waitFor({ state: 'visible', timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!shown) {
+    if (args.autoSelect === false) await expect(dialog).toBeVisible({ timeout: 25_000 });
+    else return;
+  }
 
   if (args.dialogSpin) {
     await waitReady(ctx.page, ctx.el, { hidden: String(args.dialogSpin) });
