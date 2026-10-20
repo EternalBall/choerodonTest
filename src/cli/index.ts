@@ -25,8 +25,16 @@ import { FeatureArtifactSchema } from '../core/schema.js';
 import { runCompare } from '../compare/runCompare.js';
 import { readBaselineManifest, snapshotBaseline } from '../compare/snapshot.js';
 import { maybePromptArchiveV1BeforeGen } from './promptArchiveBeforeGen.js';
+import { LlmHandoffPendingError } from '../analyzer/deepseekClient.js';
 
 dotenv.config();
+
+/**
+ * 被测前端源码根默认值：本仓库放在 /data/pdl/code/choerodonTest，
+ * 被测代码在 /data/pdl/repos/pdl-front，故相对路径为 ../../repos/pdl-front。
+ * 可用 .env 的 TARGET_PROJECT 或命令行 -p 覆盖。
+ */
+const TARGET_PROJECT_DEFAULT = process.env.TARGET_PROJECT || '../../repos/pdl-front';
 
 async function ensureDirs() {
   for (const d of [
@@ -90,7 +98,7 @@ program
   .command('analyze')
   .description('已合并到 gen；仅写出元操作文件（等同 gen -f -p --meta-only）')
   .requiredOption('-f, --feature <name>', '功能名，如 Material / 物料维护')
-  .option('-p, --project <path>', '被测前端源码根目录', process.env.TARGET_PROJECT || '.')
+  .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)
   .action(async (opts: { feature: string; project: string }) => {
     await ensureDirs();
     console.warn('\n提示: analyze 已合并到 gen，推荐: pnpm ata gen -f ... -p ...\n');
@@ -117,7 +125,7 @@ program
   .option(
     '-p, --project <path>',
     '被测前端源码根；与 -f 合用则从源码分析并写出元操作，再生成测试脚本',
-    process.env.TARGET_PROJECT,
+    TARGET_PROJECT_DEFAULT,
   )
   .option('-i, --input <file>', '已有 artifacts/<slug>/feature.yaml，仅重新生成测试脚本')
   .option('--meta-only', '只写元操作文件，不生成 suite（需 -f 且 -p）')
@@ -313,6 +321,11 @@ program
   });
 
 program.parseAsync(process.argv).catch((err) => {
+  // handoff 模式：LLM 请求已落盘等待外部 agent 应答，属正常暂停，退出码 3 供调用方识别
+  if (err instanceof LlmHandoffPendingError) {
+    console.error(`\n⏸ ${err.message}`);
+    process.exit(3);
+  }
   console.error(err);
   process.exit(1);
 });

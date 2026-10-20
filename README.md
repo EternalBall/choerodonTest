@@ -318,3 +318,16 @@ pnpm ata test -c cases/example-smoke.yaml --skip-auth
 - 控制台（规划中）：[console/README.md](./console/README.md)
 
 **确认（confirm）门禁、业务仓同步**等仍在规划中；当前用 **snapshot v1 + compare** 完成「首版保留 + 第二版差异说明」。
+
+---
+
+## LLM 文件交接模式（handoff）
+
+不配 DeepSeek key，由外部 agent（如呆呆鸟）充当 LLM。`.env` 设 `LLM_MODE=handoff` 后：
+
+1. 运行 `pnpm ata gen -f <功能名>`（`-p` 默认 `../../repos/pdl-front`）。
+2. 引擎把每次 LLM 请求写到 `artifacts/_llm-handoff/<key>.request.json`（含 `messages`、`responseFormatJson`），随后以**退出码 3** 暂停。
+3. agent 读取 request，按 `messages` 生成回复，**原样**写入同名 `<key>.response.txt`（`responseFormatJson=true` 时必须是合法 JSON）。
+4. 重跑同一条命令；已应答的请求直接复用，直到下一个未应答请求再次暂停，如此直至流程结束。
+
+key 由请求内容哈希得到，prompt 变动后旧应答自动失效。实现与细则见 `src/analyzer/deepseekClient.ts` 顶部注释。

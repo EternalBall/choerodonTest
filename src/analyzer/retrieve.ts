@@ -48,6 +48,7 @@ export async function retrieveFeatureCode(opts: {
     ignore: IGNORE,
     caseSensitiveMatch: false,
   });
+  all.sort(); // 同上：固定顺序，兄弟目录扩扫的入选顺序才可复现
 
   const scored = all
     .map((abs) => {
@@ -68,7 +69,8 @@ export async function retrieveFeatureCode(opts: {
       return { abs, rel, score };
     })
     .filter((x) => x.score > 1)
-    .sort((a, b) => b.score - a.score);
+    // 同分按路径字典序，保证检索结果与 prompt 确定（fast-glob 返回顺序不稳定；handoff 模式靠 prompt 哈希复用应答）
+    .sort((a, b) => b.score - a.score || (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
 
   const pickedRel = new Set<string>();
   const picked: Array<{ abs: string; rel: string }> = [];
