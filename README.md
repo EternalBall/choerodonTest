@@ -42,7 +42,7 @@ test-03/
 | `meta_ops` / `flows` | 可执行原子与测试流程链（权威编排） | **确定性编译**（`compileFlows`） | `feature.yaml` |
 | suite `steps` | Playwright 关键字步骤 | LLM gen（按 flows） | `suite.yaml` |
 
-分析流水线：源码 → LLM（只认能力）→ `compileMetaOpsAndFlows`（按 `operation.type` 生成 `meta_ops`/`flows`，并反写 `execution_chain` 为 meta_op_id 序列）→ 落盘。
+分析流水线：源码 → LLM（只认能力）→ **`packages/<pkg>/config/config.ts` 按 component 覆盖 `entry`/`pages` 路由** → `compileMetaOpsAndFlows`（按 `operation.type` 生成 `meta_ops`/`flows`，并反写 `execution_chain` 为 meta_op_id 序列）→ 落盘。`-p` 宜指向 monorepo 仓根（含 `packages/`），`-d` 指向功能 `src/routes/...` 目录以便对齐 component。
 
 ---
 
@@ -122,7 +122,9 @@ pnpm report             # 打开 reports/html
 | `ata test` | 执行 suite YAML |
 | `ata auth` | 登录，写入 `playwright/.auth/user.json` |
 | `ata snapshot` | 将 current 固化为 `artifacts/<slug>/v1/` |
-| `ata compare` | **v1 基线 vs current** → `diff.yaml` → LLM → `report.yaml` |
+| `ata compare` | **v1 基线 vs current** → `diff.yaml` → LLM → `report.yaml`；加 `--ata <功能目录> -p <项目根>` 则基线改取目标项目 `ata/` 最新版本（`-b V2` 指定版本，diff meta 记录 `baseline_source`） |
+| `ata confirm` | `-f <功能名> -d <功能目录> [-p 项目根] [-n 备注] [-y]`：人工确认后把 current 备份为 `<功能目录>/ata/V<n>/`（V1、V2…不可变；打印与上一版本的字段差异条数，不动目标项目 git） |
+| `ata versions` | `-d <功能目录> [-p 项目根]`：列出 `ata/` 已确认版本与确认时间 |
 | `ata actions` | 列出 suite 可用 keyword |
 
 ---
@@ -318,3 +320,16 @@ pnpm ata test -c cases/example-smoke.yaml --skip-auth
 - 控制台（规划中）：[console/README.md](./console/README.md)
 
 **确认（confirm）门禁、业务仓同步**等仍在规划中；当前用 **snapshot v1 + compare** 完成「首版保留 + 第二版差异说明」。
+
+---
+
+## LLM 文件交接模式（handoff）
+
+不配 DeepSeek key，由外部 agent（如呆呆鸟）充当 LLM。`.env` 设 `LLM_MODE=handoff` 后：
+
+1. 运行 `pnpm ata gen -f <功能名>`（`-p` 默认 `../../repos/pdl-front`）。
+2. 引擎把每次 LLM 请求写到 `artifacts/_llm-handoff/<key>.request.json`（含 `messages`、`responseFormatJson`），随后以**退出码 3** 暂停。
+3. agent 读取 request，按 `messages` 生成回复，**原样**写入同名 `<key>.response.txt`（`responseFormatJson=true` 时必须是合法 JSON）。
+4. 重跑同一条命令；已应答的请求直接复用，直到下一个未应答请求再次暂停，如此直至流程结束。
+
+key 由请求内容哈希得到，prompt 变动后旧应答自动失效。实现与细则见 `src/analyzer/deepseekClient.ts` 顶部注释。

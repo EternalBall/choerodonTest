@@ -45,6 +45,8 @@ export const StepSchema = z.object({
   ready: ReadySchema,
   /** true | false | { fullPage?, target? }；默认 true 且 fullPage=false */
   screenshot: ScreenshotSchema.default(true),
+  /** 依赖用户可个性化的内容（如被隐藏的列）：该元素不存在时跳过整条用例，而不是报失败 */
+  skipIfMissing: z.string().optional(),
 });
 
 export const CaseSchema = z.object({
@@ -152,11 +154,13 @@ export const RowTargetSchema = z.object({
   /** 所在区域，如 secondaryUomTable */
   area: z.string().optional(),
   /** 控件形态 */
-  control: z.enum(['radio', 'switch', 'button', 'link', 'other']).optional(),
+  control: z.enum(['radio', 'switch', 'button', 'link', 'lov', 'other']).optional(),
   /** 列/字段名，如 defaultFlag */
   column: z.string().optional(),
   /** 元素库 key，如 defaultSecondaryUomRadio */
   element: z.string().optional(),
+  /** 行内编辑器需先点击的单元格元素 key（Lov/Switch 等行内编辑） */
+  cell_element: z.string().optional(),
 });
 
 /** related_page / 跳转入口：显式控件，禁止 gen 猜元素 key */
@@ -194,6 +198,21 @@ export const PageEdgeSchema = z.object({
   control: EntryControlSchema.optional(),
   preconditions: z.array(z.string()).optional(),
   note: z.string().optional(),
+});
+
+/** 大模型直接给出的执行步骤；kind 必须落在 MetaOpKind 白名单内，由 validateSteps 校验 */
+export const OperationStepSchema = z.object({
+  kind: z.string(),
+  name: z.string(),
+  page_id: z.string().optional(),
+  element: z.string().optional(),
+  api: z.string().optional(),
+  args: z.record(z.unknown()).optional(),
+  note: z.string().optional(),
+  /** 依据：源码位置或手册条目，便于人工复核 */
+  evidence: z.string().optional(),
+  /** 本步依赖的、可能被用户个性化隐藏的元素（如列头 th）；缺失时用例跳过而非失败 */
+  requires: z.string().optional(),
 });
 
 export const OperationSchema = z.object({
@@ -240,6 +259,10 @@ export const OperationSchema = z.object({
     .optional(),
   /** 行内动作目标 */
   row_target: RowTargetSchema.optional(),
+  /** 大模型直接给出的有序步骤；校验通过则优先于规则模板 */
+  steps: z.array(OperationStepSchema).optional(),
+  /** 编译来源：llm_steps=采用模型步骤；template=规则模板（含校验失败回退） */
+  step_source: z.enum(['llm_steps', 'template']).optional(),
 });
 
 /** 元操作 kind：与 keywords action 对齐，供流程编排 */
@@ -372,6 +395,40 @@ export const ReviewSuggestionsSchema = z.object({
   dom_candidates: z.array(DomCandidateSchema).optional(),
 });
 
+/**
+ * 字段属性事实值：字面量原样保留；枚举成员取成员名；无法静态求值的表达式记 {expr}；
+ * 嵌套对象字面量（如 lovPara）递归。
+ */
+export type FactValue =
+  | string
+  | number
+  | boolean
+  | null
+  | FactValue[]
+  | { expr: string }
+  | { [key: string]: FactValue };
+
+export const FactValueSchema: z.ZodType<FactValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(FactValueSchema),
+    z.record(FactValueSchema),
+  ]),
+);
+
+/** 静态提取的字段事实：由 AST 确定性产出，不经过 LLM */
+export const FieldFactSchema = z.object({
+  /** 所在最近的变量名/函数名，如 tableDS；取不到为 (anonymous) */
+  ds: z.string(),
+  group: z.enum(['fields', 'queryFields']),
+  file: z.string(),
+  name: z.string(),
+  attrs: z.record(FactValueSchema),
+});
+
 export const FeatureArtifactSchema = z.object({
   feature: z.string(),
   entry: z.object({
@@ -390,6 +447,8 @@ export const FeatureArtifactSchema = z.object({
   page_states: z.array(PageStateSchema).optional(),
   field_rules: z.array(FieldRuleSchema).optional(),
   validations: z.array(ValidationRuleSchema).optional(),
+  /** 源码静态提取的字段事实（确定性，analyze 后写入；旧产物缺省） */
+  field_facts: z.array(FieldFactSchema).optional(),
   review_suggestions: ReviewSuggestionsSchema.optional(),
   sources: z.array(z.string()).default([]),
   confidence: z.number().min(0).max(1).default(0.5),
@@ -405,6 +464,7 @@ export const FeatureArtifactSchema = z.object({
 
 export type FeatureArtifact = z.infer<typeof FeatureArtifactSchema>;
 export type ElementHint = z.infer<typeof ElementHintSchema>;
+export type FieldFact = z.infer<typeof FieldFactSchema>;
 export type PageState = z.infer<typeof PageStateSchema>;
 export type FieldRule = z.infer<typeof FieldRuleSchema>;
 export type ValidationRule = z.infer<typeof ValidationRuleSchema>;
@@ -420,6 +480,8 @@ export type FlowEdge = z.infer<typeof FlowEdgeSchema>;
 
 /** DeepSeek 结构化输出用（与 FeatureArtifact 对齐，字段更宽松便于模型填充） */
 export const LlmFeatureOutputSchema = FeatureArtifactSchema.omit({
+  // field_facts 为确定性事实，不让 LLM 生成
+  field_facts: true,
   sources: true,
   analyzer: true,
   model: true,

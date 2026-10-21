@@ -1,4 +1,4 @@
-# Choerodon Table + filterBar 结构（物料维护实测）
+# Choerodon Table + filterBar 结构（通用）
 # 机器可读定位见：knowledge/platform/choerodon/kit.yaml
 # 整表壳 / 分页 / 勾选 / 工具栏总册：[choerodon-table.md](./choerodon-table.md)
 

@@ -2,6 +2,7 @@ import type { FeatureArtifact, Flow, MetaOp } from '../core/schema.js';
 import { OperationSchema } from '../core/schema.js';
 import type { z } from 'zod';
 import { deepEqual } from './deepEqual.js';
+import { diffFieldFacts, diffRuleLists, type FieldDiffItem, type ListDiffItem } from './diffFields.js';
 import { diffFlowChains, type FlowChainDiff } from './resolveFlow.js';
 
 type Operation = z.infer<typeof OperationSchema>;
@@ -23,6 +24,12 @@ export type ArtifactDiff = {
   field_rules: { changed: boolean; detail?: string };
   validations: { changed: boolean; detail?: string };
   entry: { changed: boolean; detail?: string };
+  /** 字段级：静态提取的字段事实逐项 diff */
+  field_facts: FieldDiffItem[];
+  /** 字段级：field_rules / validations / page_states 逐项逐属性 diff（上面的 changed 布尔保留） */
+  field_rules_items: ListDiffItem[];
+  validations_items: ListDiffItem[];
+  page_states_items: ListDiffItem[];
 };
 
 const OP_COMPARE_FIELDS = [
@@ -36,6 +43,16 @@ const OP_COMPARE_FIELDS = [
   'initial_mode',
   'page_id',
   'route',
+  // 字段级补充：以下字段若 OperationSchema 里不存在，读出来恒为 undefined，不会报错
+  'fields',
+  'unlock',
+  'row_target',
+  'api_kind',
+  'api_source',
+  'scope',
+  'entry',
+  'from_state',
+  'to_state',
 ] as const;
 
 function diffById<T extends { id: string }>(
@@ -100,6 +117,7 @@ export function diffFeatureArtifacts(before: FeatureArtifact, after: FeatureArti
   }
 
   const flows = { ...flowsBase, sequenceChanged };
+  const lists = diffRuleLists(before, after);
 
   return {
     operations,
@@ -118,6 +136,10 @@ export function diffFeatureArtifacts(before: FeatureArtifact, after: FeatureArti
     entry: {
       changed: !deepEqual(before.entry, after.entry),
     },
+    field_facts: diffFieldFacts(before.field_facts, after.field_facts),
+    field_rules_items: lists.field_rules,
+    validations_items: lists.validations,
+    page_states_items: lists.page_states,
   };
 }
 
@@ -135,6 +157,14 @@ export function artifactLogicChanged(diff: ArtifactDiff): boolean {
     diff.page_states.changed ||
     diff.field_rules.changed ||
     diff.validations.changed
+  ) {
+    return true;
+  }
+  if (
+    diff.field_facts.length ||
+    diff.field_rules_items.length ||
+    diff.validations_items.length ||
+    diff.page_states_items.length
   ) {
     return true;
   }

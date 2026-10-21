@@ -1,3 +1,7 @@
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+
 export type DeepSeekConfig = {
   apiKey: string;
   baseURL: string;
@@ -50,12 +54,75 @@ function chatCompletionsUrl(baseURL: string): string {
   return `${base}/v1/chat/completions`;
 }
 
+
+/* ------------------------------------------------------------------ *
+ * 文件交接模式（handoff）——供「呆呆鸟」等外部 agent 接管 LLM 环节
+ * ------------------------------------------------------------------ *
+ * 启用：.env 中设置 LLM_MODE=handoff（默认 api，走下面的 HTTP 调用，行为不变）。
+ *
+ * 流程（幂等，可反复重跑同一条 ata 命令）：
+ *   1. 引擎每次要调 LLM 时，把 messages 写到
+ *        <LLM_HANDOFF_DIR>/<key>.request.json
+ *      key = messages/temperature/json 模式的 sha256 前 16 位，同一请求 key 恒定。
+ *   2. 若同目录已有 <key>.response.txt，则读它的内容当作 LLM 回复，继续走原有的
+ *      解析 / zod 校验 / 落盘流程（对调用方完全透明）。
+ *   3. 若还没有 response，抛出 LlmHandoffPendingError，CLI 以退出码 3 结束。
+ *      外部 agent 读取 request.json → 按 messages 生成回复 → 写入同名 response.txt
+ *      （纯文本，原样就是模型应返回的内容；request 里 responseFormatJson=true 时必须是合法 JSON）
+ *      → 重跑同一条命令。每次重跑最多推进一个未应答的请求。
+ *
+ * LLM_HANDOFF_DIR 默认 artifacts/_llm-handoff（artifacts/* 已被 .gitignore，不会入库）。
+ * 注意：prompt 改动会改变 key，旧 response 自动失效，不会误用。
+ */
+export class LlmHandoffPendingError extends Error {
+  constructor(
+    public readonly requestFile: string,
+    public readonly responseFile: string,
+  ) {
+    super(
+      `LLM 请求已写出，等待外部 agent 应答。\n  请求: ${requestFile}\n  应答请去写: ${responseFile}\n  写好后重跑同一条命令。`,
+    );
+    this.name = 'LlmHandoffPendingError';
+  }
+}
+
+export function isHandoffMode(): boolean {
+  return (process.env.LLM_MODE || 'api').toLowerCase() === 'handoff';
+}
+
+function handoffChat(opts: {
+  messages: DeepSeekChatMessage[];
+  temperature?: number;
+  responseFormatJson?: boolean;
+}): { content: string; model: string } {
+  const dir = path.resolve(process.env.LLM_HANDOFF_DIR || 'artifacts/_llm-handoff');
+  const payload = {
+    messages: opts.messages,
+    temperature: opts.temperature ?? 0.1,
+    responseFormatJson: !!opts.responseFormatJson,
+  };
+  const key = createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 16);
+  const requestFile = path.join(dir, `${key}.request.json`);
+  const responseFile = path.join(dir, `${key}.response.txt`);
+
+  if (fs.existsSync(responseFile)) {
+    const content = fs.readFileSync(responseFile, 'utf-8').trim();
+    if (content) return { content, model: 'handoff-agent' };
+  }
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(requestFile, JSON.stringify(payload, null, 2), 'utf-8');
+  throw new LlmHandoffPendingError(requestFile, responseFile);
+}
+
 export async function deepSeekChat(opts: {
   messages: DeepSeekChatMessage[];
   temperature?: number;
   responseFormatJson?: boolean;
   config?: DeepSeekConfig;
 }): Promise<{ content: string; model: string }> {
+  // handoff 模式不需要 API key，直接走文件交接（见上方说明）
+  if (isHandoffMode()) return handoffChat(opts);
+
   const config = opts.config ?? loadDeepSeekConfig();
   const url = chatCompletionsUrl(config.baseURL);
 

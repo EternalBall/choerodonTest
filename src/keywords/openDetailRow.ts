@@ -20,6 +20,12 @@ export async function openDetailRow(
     loc = loc.filter({ hasText: new RegExp(`^${s}$`) });
   }
 
+  // 表格数据常为异步渲染（如站点分配页 ready 后行才出现）：先等目标出现再计数，
+  // 超时仍为 0 行才报错；timeout 可用 args.timeout 覆盖（毫秒）
+  await loc
+    .first()
+    .waitFor({ state: 'visible', timeout: Number(args.timeout ?? 15_000) })
+    .catch(() => undefined);
   const count = await loc.count();
   if (count === 0) {
     throw new Error(

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { deepSeekChat, loadDeepSeekConfig } from '../analyzer/deepseekClient.js';
+import { deepSeekChat, isHandoffMode, loadDeepSeekConfig } from '../analyzer/deepseekClient.js';
 import { logger } from '../core/logger.js';
 import type { CompareDiffDocument } from './buildDiffYaml.js';
 import YAML from 'yaml';
@@ -51,7 +51,8 @@ function buildSystemPrompt(): string {
 export async function llmSummarizeDiff(
   diff: CompareDiffDocument,
 ): Promise<{ report: CompareReportDocument; raw: string }> {
-  const config = loadDeepSeekConfig();
+  // handoff 模式不需要 API key（由外部 agent 应答），此时不加载 DeepSeek 配置
+  const config = isHandoffMode() ? undefined : loadDeepSeekConfig();
   // 给 LLM 的精简视图：流程主轴 + highlights，避免全量 before/after 噪音
   const forLlm = {
     meta: {
@@ -72,6 +73,8 @@ export async function llmSummarizeDiff(
       })),
     operations: diff.operations,
     supporting: diff.supporting,
+    // 字段级变更（必输性/校验/值集等），让总结也能覆盖到字段粒度
+    fields: diff.fields,
     suite: diff.suite,
   };
   const diffYaml = YAML.stringify(forLlm);
