@@ -38,6 +38,8 @@ export type ColumnInfo = {
 export type PrunedFile = {
   file: string;
   imports: Record<string, string>;
+  /** 本地名 → 被导入的原名（默认导入为 'default'，命名空间导入为 '*'），用于穿透 barrel 的 re-export */
+  importNames: Record<string, string>;
   /** 文件内每个含 JSX 的顶层组件/函数（按源码顺序）的根 JSX */
   roots: PrunedNode[];
   /** 列配置里出现的 name（含 renderer 链接） */
@@ -117,7 +119,8 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
   const imports: Record<string, string> = {};
   /** 局部解构别名：const { Panel } = Collapse → Panel → Collapse */
   const aliases: Record<string, string> = {};
-  const out: PrunedFile = { file, imports, roots: [], rootOverlay: [], decorated: [], columns: [], truncated: false, stats: { spreads: 0, mapJsx: 0 }, unresolved: [] };
+  const importNames: Record<string, string> = {};
+  const out: PrunedFile = { file, imports, importNames, roots: [], rootOverlay: [], decorated: [], columns: [], truncated: false, stats: { spreads: 0, mapJsx: 0 }, unresolved: [] };
   let nodeCount = 0;
 
   for (const st of sf.statements) {
@@ -125,10 +128,20 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
       const src = st.moduleSpecifier.text;
       const c = st.importClause;
       if (!c) continue;
-      if (c.name) imports[c.name.text] = src;
+      if (c.name) {
+        imports[c.name.text] = src;
+        importNames[c.name.text] = 'default';
+      }
       if (c.namedBindings) {
-        if (ts.isNamespaceImport(c.namedBindings)) imports[c.namedBindings.name.text] = src;
-        else for (const el of c.namedBindings.elements) imports[el.name.text] = src;
+        if (ts.isNamespaceImport(c.namedBindings)) {
+          imports[c.namedBindings.name.text] = src;
+          importNames[c.namedBindings.name.text] = '*';
+        } else {
+          for (const el of c.namedBindings.elements) {
+            imports[el.name.text] = src;
+            importNames[el.name.text] = (el.propertyName ?? el.name).text;
+          }
+        }
       }
     }
     if (ts.isVariableStatement(st)) {
@@ -449,7 +462,10 @@ export async function prunePage(
     for (const tag of tags) {
       const spec = pf.imports[tag];
       if (!spec) continue;
-      const target = await resolveRelativeImport(abs, spec, ropts.aliases);
+      let target = await resolveRelativeImport(abs, spec, ropts.aliases);
+      if (target && pf.importNames[tag] && pf.importNames[tag] !== '*') {
+        target = await retargetBarrel(target, pf.importNames[tag], ropts.aliases);
+      }
       if (!target) {
         pf.unresolved.push({
           tag,
@@ -468,6 +484,30 @@ export async function prunePage(
   };
   await walk(entryAbs, 0);
   return { entry: path.relative(repoRoot, entryAbs), files, followed };
+}
+
+/**
+ * 穿透 barrel：target 文件若是 `export { default as X } from './X'` / `export { X } from './Y'` 这类转发，
+ * 返回 imported 名对应的真实文件；不是转发则原样返回。
+ */
+export async function retargetBarrel(target: string, importedName: string, aliases?: Record<string, string>): Promise<string> {
+  let text: string;
+  try {
+    text = await fs.readFile(target, 'utf8');
+  } catch {
+    return target;
+  }
+  if (!/export\s*\{/.test(text)) return target;
+  const sf = ts.createSourceFile(target, text, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TSX);
+  for (const st of sf.statements) {
+    if (!ts.isExportDeclaration(st) || !st.moduleSpecifier || !ts.isStringLiteral(st.moduleSpecifier)) continue;
+    if (!st.exportClause || !ts.isNamedExports(st.exportClause)) continue;
+    if (st.exportClause.elements.some((e) => e.name.text === importedName)) {
+      const next = await resolveRelativeImport(target, st.moduleSpecifier.text, aliases);
+      if (next) return next;
+    }
+  }
+  return target;
 }
 
 /** 多入口合并：共享 visited，同一文件只裁剪一次 */

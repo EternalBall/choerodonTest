@@ -173,7 +173,7 @@ export async function scanRoutes(opts: ScanOptions): Promise<{ summary: ScanSumm
       const gapOfNode = new Map<string, LocGap>();
       for (const g of bound.gaps) if (g.node_id) gapOfNode.set(g.node_id, g);
       for (const n of nodes) {
-        if (REGION_ONLY.has(n.component)) continue;
+        if (REGION_ONLY.has(n.component) || n.transparent) continue;
         if (n.locator_status === 'bound') m.bound++;
         else if (n.locator_status === 'needs_kit') m.needs_kit++;
         else if (n.locator_status === 'needs_probe') m.needs_probe++;

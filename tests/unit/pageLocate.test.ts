@@ -212,3 +212,34 @@ describe('多表定位稳定性', () => {
     assert.equal(r.locators.innerTable, undefined);
   });
 });
+
+describe('库入口 barrel：tarzan-ui', () => {
+  it('包裹型组件透明、抽屉内容按浮层处理、未登记导出仍记 lib_unknown', async () => {
+    const la = { '@components': 'hcm-components-front' };
+    const src = `import { TarzanSpin, TarzanDrawer, Mystery } from '@components/tarzan-ui';
+import { Table, Button } from 'choerodon-ui/pro';
+const P = () => (<TarzanSpin><Button onClick={add}>新建</Button><TarzanDrawer visible><Table dataSet={inDS} /></TarzanDrawer><Mystery /></TarzanSpin>);`;
+    const r = bindPage({ entry: 'a', files: [pruneJsxSource(src, 'a/index.tsx')], followed: [] }, 't', 'feat_t', { libAliases: la });
+    const spin = r.pages[0].nodes.find((n) => n.component === 'TarzanSpin')!;
+    assert.equal(spin.transparent, true);
+    assert.equal(r.locators.btnAdd.name, '新建'); // 透明容器内的子节点照常绑定
+    const inner = r.pages[0].nodes.find((n) => n.component === 'Table')!;
+    assert.equal(inner.locator_status, 'needs_probe'); // 抽屉内的表按浮层处理
+    assert.ok(r.gaps.some((g) => g.cause === 'overlay_table'));
+    assert.ok(r.gaps.some((g) => g.cause === 'lib_known:hcm-components-front/@components/tarzan-ui#TarzanDrawer'));
+    assert.ok(r.gaps.some((g) => g.cause === 'lib_unknown:hcm-components-front:@components/tarzan-ui'));
+  });
+
+  it('retargetBarrel：export { default as X } from "./X" 穿透到真实文件', async () => {
+    const os = await import('node:os');
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const { retargetBarrel } = await import('../../src/analyzer/pruneJsx.js');
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'barrel-'));
+    await fs.mkdir(path.join(d, 'Foo'));
+    await fs.writeFile(path.join(d, 'Foo', 'index.tsx'), 'export default () => null;');
+    await fs.writeFile(path.join(d, 'index.js'), "export { default as Foo } from './Foo';\n");
+    assert.equal(await retargetBarrel(path.join(d, 'index.js'), 'Foo'), path.join(d, 'Foo', 'index.tsx'));
+    assert.equal(await retargetBarrel(path.join(d, 'index.js'), 'Nope'), path.join(d, 'index.js'));
+  });
+});

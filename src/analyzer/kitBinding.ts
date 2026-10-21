@@ -32,6 +32,8 @@ export type LocNode = {
   evidence: { file: string; note: string }[];
   locator_key?: string;
   locator_status: NodeLocStatus;
+  /** 透明容器（如 TarzanSpin）：自身无定位意义，子节点照常解析；不计入覆盖率分母 */
+  transparent?: boolean;
   /** 确定性绑定无法起名时给 LLM 的候选（角色 + 名称） */
   suggest?: { role?: string; name?: string; text?: string };
 };
@@ -302,6 +304,7 @@ function visit(ctx: Ctx, n: PrunedNode, region: string | undefined, cond = false
   const saved = ctx.cond;
   ctx.cond = cond || !!n.conditional;
   let childRegion = region;
+  let overlayChildren = false;
   const ev = `${ctx.file.file}:${n.line}`;
 
   if (n.kind === 'custom' || n.kind === 'unknown') {
@@ -320,7 +323,12 @@ function visit(ctx: Ctx, n: PrunedNode, region: string | undefined, cond = false
       const lib = matchLibAlias(spec, ctx.libAliases);
       if (lib) {
         // 库组件：源码不在仓库内，无法展开。已登记的（Lov/EditTable/Upload/Checkbox）记为「已知、待探测」，未登记的记 lib_unknown
-        const known = lookupKnownLib(lib.pkg, spec, lib.prefix);
+        const known = lookupKnownLib(lib.pkg, spec, lib.prefix, ctx.file.importNames[n.tag.split('.')[0]]);
+        if (known?.info.role === 'wrapper') {
+          mk(ctx, n, region, { locator_status: 'unbound', transparent: true });
+          overlayChildren = false;
+        } else {
+        if (known?.info.role === 'drawer') overlayChildren = true;
         const node = mk(ctx, n, region, { locator_status: known ? 'needs_probe' : 'unresolved_custom' });
         ctx.gaps.push({
           type: known ? 'dynamic_dom' : 'unresolved_custom',
@@ -331,6 +339,7 @@ function visit(ctx: Ctx, n: PrunedNode, region: string | undefined, cond = false
           suggested_action: 'probe_dom',
           cause: known ? `lib_known:${known.key}` : `lib_unknown:${lib.pkg}:${spec}`,
         });
+        }
       } else {
         // 已被跟进展开的自定义组件：子树在对应文件里，不算缺口
         const node = mk(ctx, n, region, { locator_status: 'unresolved_custom' });
@@ -347,7 +356,10 @@ function visit(ctx: Ctx, n: PrunedNode, region: string | undefined, cond = false
     childRegion = bindC7n(ctx, n, region, ev) ?? region;
   }
 
+  const savedOverlay = ctx.overlay;
+  if (overlayChildren) ctx.overlay = true;
   for (const c of n.children) visit(ctx, c, childRegion, ctx.cond);
+  ctx.overlay = savedOverlay;
   ctx.cond = saved;
 }
 

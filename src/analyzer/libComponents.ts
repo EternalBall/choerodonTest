@@ -40,7 +40,7 @@ export function matchLibAlias(spec: string, libAliases: Record<string, string>):
 
 export type KnownLibComponent = {
   /** 角色，供下游决定探测方式 */
-  role: 'lov-field' | 'edit-table' | 'upload' | 'checkbox';
+  role: 'lov-field' | 'edit-table' | 'upload' | 'checkbox' | 'wrapper' | 'drawer' | 'composite-field' | 'opaque-control';
   /** 已核实的用法依据（仓库内实际写法） */
   evidence: string;
 };
@@ -64,9 +64,33 @@ export const KNOWN_LIB_COMPONENTS: Record<string, KnownLibComponent> = {
   'hzero-front/components/Upload/UploadButton': { role: 'upload', evidence: '<Upload …/>（源码注释标注该组件已不再维护）' },
 };
 
-export function lookupKnownLib(pkg: string, spec: string, prefix: string): { key: string; info: KnownLibComponent } | null {
+/**
+ * 库入口（barrel）按导出名登记：键为「包名/导入路径」。登记依据为全仓库实际用法（括号内为引用处数）：
+ * wrapper = 以 JSX 包裹子节点使用，子节点按普通节点继续解析（透明性按用法推断，DOM 未核实）；
+ * drawer = 带 visible/onClose 的抽屉，内容按需渲染；composite-field / opaque-control = 自带 DOM 的组合控件。
+ */
+export const KNOWN_LIB_EXPORTS: Record<string, Record<string, KnownLibComponent>> = {
+  'hcm-components-front/@components/tarzan-ui': {
+    TarzanSpin: { role: 'wrapper', evidence: '<TarzanSpin dataSet spinning>包裹 Header/Content（53 处）' },
+    LocaleProvider: { role: 'wrapper', evidence: '<LocaleProvider>包裹整页内容（16 处）' },
+    ExpandCardC7n: { role: 'wrapper', evidence: '<ExpandCardC7n title showExpandIcon>内含 Form 等子节点（31 处）' },
+    C7nFormItemSort: { role: 'wrapper', evidence: '<C7nFormItemSort name itemWidth>内含 <Lov name/><Select name/>（50 处）' },
+    TarzanDrawer: { role: 'drawer', evidence: '<TarzanDrawer visible onOk onClose title>（28 处），按 visible 渲染' },
+    AttributeDrawer: { role: 'opaque-control', evidence: '<AttributeDrawer type kid className canEdit/> 无子节点（73 处）' },
+    LovSelect: { role: 'composite-field', evidence: '<LovSelect dataSet name selectName/>：Lov 与 Select 合一（10 处）' },
+  },
+};
+
+export function lookupKnownLib(
+  pkg: string,
+  spec: string,
+  prefix: string,
+  importedName?: string,
+): { key: string; info: KnownLibComponent } | null {
   const rest = spec.slice(prefix.length).replace(/^\//, '');
   const key = `${pkg}/${prefix}/${rest}`.replace(/\/+$/, '');
+  const byExport = importedName ? KNOWN_LIB_EXPORTS[key]?.[importedName] : undefined;
+  if (byExport) return { key: `${key}#${importedName}`, info: byExport };
   const info = KNOWN_LIB_COMPONENTS[key];
   return info ? { key, info } : null;
 }
