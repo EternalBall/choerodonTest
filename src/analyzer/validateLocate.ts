@@ -28,9 +28,10 @@ const hasConcrete = (d: LocatorDef) => CONCRETE_KEYS.some((k) => d[k] !== undefi
 export function deriveElementsDraft(r: PageLocateResult): PageLocateResult['elements_draft'] {
   const ns: Record<string, Record<string, unknown>> = {};
   for (const [key, d] of Object.entries(r.locators)) {
-    if (d.status === 'blocked' || !hasConcrete(d)) continue;
-    const { evidence: _e, status: _s, kit: _k, ...rest } = d;
-    void _e; void _s; void _k;
+    if (d.status === 'blocked' || !(hasConcrete(d) || d.kit)) continue;
+    // kit 引用项保留 kit 字段，由 buildFeatureElementLib 展开成平台 kit 的定义
+    const { evidence: _e, status: _s, ...rest } = d;
+    void _e; void _s;
     ns[key] = rest;
   }
   return Object.keys(ns).length ? { [r.slug]: ns } : {};

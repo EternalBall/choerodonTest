@@ -160,3 +160,26 @@ const P = () => (<div><Lov code="X" /><Foo /></div>);`;
     assert.equal(Object.keys(r.locators).length, 0);
   });
 });
+
+describe('列 editor 控件与旧版 Form 字段', () => {
+  it('列 editor 里无 name 的控件 → 绑定到列单元格，within 指向对应表；getFieldDecorator 控件记 legacy_form_field', () => {
+    const src = `import { Table, TextField } from 'choerodon-ui/pro';
+const cols = [
+  { name: 'dataName', editor: (record) => (record.editing ? <TextField /> : null) },
+  { name: 'plain' },
+];
+const P = () => (<div><Table dataSet={lineDs} columns={cols} />{getFieldDecorator('remark')(<Input />)}</div>);`;
+    const r = bindPage({ entry: 'a', files: [pruneJsxSource(src, 'a/index.tsx')], followed: [] }, 't', 'feat_t');
+    assert.partialDeepStrictEqual(r.locators.dataNameCell, { css: 'td[data-index="dataName"]', within: 'feat_t.lineTable' });
+    const tf = r.pages[0].nodes.find((n) => n.component === 'TextField')!;
+    assert.equal(tf.locator_status, 'bound');
+    assert.equal(tf.locator_key, 'dataNameCell');
+  });
+
+  it('kit 引用项进入 elements_draft 并在元素库中展开为 kit 定义', async () => {
+    const { deriveElementsDraft } = await import('../../src/analyzer/validateLocate.js');
+    const r = bindPage(page(), 't', 'feat_t');
+    r.locators.onlyKit = { kit: 'table', evidence: 'e', status: 'proposed' };
+    assert.deepEqual(deriveElementsDraft(r).feat_t.onlyKit, { kit: 'table' });
+  });
+});

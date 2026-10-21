@@ -85,7 +85,7 @@ function unboundCause(n: LocNode, pf: PrunedFile | undefined): string {
   if (/Button$/.test(n.component)) return n.suggest ? 'button_needs_key_name' : 'button_icon_only';
   if (n.component === 'Table') return 'table_no_dataset';
   if (['Lov', 'Select', 'TextField', 'NumberField', 'Switch', 'DatePicker', 'TextArea', 'IntlField'].includes(n.component)) {
-    return 'field_no_literal_name';
+    return typeof n.props?.name === 'string' && n.props.name.startsWith('{') ? 'field_dynamic_name' : 'field_no_name_prop';
   }
   void pf;
   return `unbound:${n.component}`;

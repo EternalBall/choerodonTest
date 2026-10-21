@@ -126,6 +126,10 @@ type Ctx = {
   btnTexts: Map<string, string[]>;
   followedTags: Set<string>;
   libAliases: Record<string, string>;
+  /** 列数组变量名 → 表格语义键（<Table columns={x} dataSet={yDS}> 预扫得到） */
+  tableOfColumns: Map<string, string>;
+  /** 位于弹窗/浮层、没有 locator 的表格键：引用它的 within 需摘除 */
+  overlayTableKeys: Set<string>;
   /** 当前遍历的根是否为弹窗/浮层/变量里的 JSX（非主渲染树） */
   overlay: boolean;
 };
@@ -151,6 +155,7 @@ export function bindPage(page: PrunedPage, feature: string, slug: string, bopts:
   const gaps: LocGap[] = [];
   const pages: LocPage[] = [];
   const followups: PageLocateResult['followups'] = [];
+  const overlayTableKeys = new Set<string>();
 
   for (const f of page.files) {
     const ctx: Ctx = {
@@ -167,6 +172,8 @@ export function bindPage(page: PrunedPage, feature: string, slug: string, bopts:
       btnTexts: new Map(),
       overlay: false,
       libAliases: bopts.libAliases ?? {},
+      overlayTableKeys,
+      tableOfColumns: new Map(),
       followedTags: new Set(page.followed.filter((x) => x.from === f.file).map((x) => x.tag)),
     };
     // 主页面（页面级）表格总数 = 排除 Modal 内容后的 Table；这里按源码顺序统计所有 c7n Table
@@ -175,6 +182,18 @@ export function bindPage(page: PrunedPage, feature: string, slug: string, bopts:
     // 主渲染树 = 非 Modal.open 等调用内的 JSX（pruneJsx.rootOverlay）
     const mainRoots = f.roots.filter((_, i) => !f.rootOverlay[i]);
     ctx.tableCount = countTables(mainRoots);
+
+    const scanTables = (ns: PrunedNode[]) => {
+      for (const n of ns) {
+        if (n.kind === 'c7n' && n.tag === 'Table') {
+          const ds = ident(n.props.dataSet);
+          const cv = ident(n.props.columns);
+          if (ds && cv) ctx.tableOfColumns.set(cv, tableKeyFromDataSet(ds));
+        }
+        scanTables(n.children);
+      }
+    };
+    scanTables(f.roots);
 
     // 记录同文案按钮出现次数（判多实例）
     const scanBtn = (ns: PrunedNode[]) => {
@@ -205,6 +224,17 @@ export function bindPage(page: PrunedPage, feature: string, slug: string, bopts:
       regions: ctx.regions,
       nodes: ctx.nodes,
     });
+  }
+
+  // within 指向弹窗内表格（无 locator）的定位：摘掉 within，降为 needs_review，避免运行期引用不存在的元素
+  for (const [k, d] of Object.entries(locators)) {
+    const ref = d.within?.split('.').pop();
+    if (ref && overlayTableKeys.has(ref) && !(ref in locators)) {
+      delete d.within;
+      d.status = 'needs_review';
+      d.evidence = `${d.evidence ?? ''}（所属表格在弹窗内，未限定表格范围）`;
+      void k;
+    }
   }
 
   return {
@@ -295,6 +325,7 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
     const ds = ident(n.props.dataSet);
     const key = ds ? tableKeyFromDataSet(ds) : undefined;
     if (ctx.overlay) {
+      if (key) ctx.overlayTableKeys.add(key);
       const node = mk(ctx, n, region, { locator_status: 'needs_probe' });
       ctx.gaps.push({
         type: 'dynamic_dom',
@@ -387,6 +418,33 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
     const name = typeof n.props.name === 'string' && !n.props.name.startsWith('{') ? n.props.name : undefined;
     const ctl = FIELD_CONTROL[tag];
     if (!name || !/^[a-zA-Z]/.test(name)) {
+      // 列 editor 里的控件：字段名就是列 name，定位到该列单元格（点击单元格进入编辑，见 choerodon-table-row-edit 手册）
+      const col = ctx.file.columns.find((c) => c.editors?.some((e) => e.tag === tag && e.line === n.line));
+      if (col && /^[A-Za-z]\w*$/.test(col.name)) {
+        const tk = col.group ? ctx.tableOfColumns.get(col.group) : undefined;
+        const ck = `${col.name}Cell`;
+        addLocator(ctx, ck, {
+          css: `td[data-index="${col.name}"]`,
+          ...(tk ? { within: `${ctx.slug}.${tk}` } : {}),
+          evidence: `${ev}（列 ${col.name} 的 editor 控件 <${tag}>，字段名取自列 name）`,
+          status: tk ? 'proposed' : 'needs_review',
+        });
+        mk(ctx, n, region, { locator_key: ck, locator_status: 'bound' });
+        return region;
+      }
+      // rc-form 旧写法：getFieldDecorator('x')(<Ctl />)，字段名已知但旧版控件 DOM 未核实
+      const dec = ctx.file.decorated.find((d) => d.tag === tag && d.line === n.line);
+      if (dec) {
+        const node = mk(ctx, n, region, { locator_status: 'needs_probe' });
+        ctx.gaps.push({
+          type: 'dynamic_dom',
+          node_id: node.id,
+          detail: `旧版 Form 控件 <${tag}>，字段名 ${dec.name}（getFieldDecorator）；旧版控件 DOM 未核实，需探测`,
+          suggested_action: 'probe_dom',
+          cause: 'legacy_form_field',
+        });
+        return region;
+      }
       mk(ctx, n, region, { locator_status: 'unbound' });
       return region;
     }

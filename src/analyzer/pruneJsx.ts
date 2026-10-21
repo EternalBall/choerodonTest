@@ -29,6 +29,8 @@ export type ColumnInfo = {
   lock?: string;
   /** 所属列数组变量名（如 columns / lineColumns），用于对应 <Table columns={…}> */
   group?: string;
+  /** 列 editor 里直接返回的 JSX 控件（标签与行号）：控件本身常无 name，字段名就是列 name */
+  editors?: { tag: string; line: number }[];
 };
 
 export type PrunedFile = {
@@ -42,6 +44,8 @@ export type PrunedFile = {
   truncated: boolean;
   /** 根 JSX 是否位于 Modal.open / Modal.confirm 等调用参数内（弹窗内容，打开前不在 DOM） */
   rootOverlay: boolean[];
+  /** rc-form 旧写法 getFieldDecorator('字段名')(<控件/>)：控件标签、行号与字段名 */
+  decorated: { tag: string; line: number; name: string }[];
   /** 动态写法统计：JSX 展开属性 {...x} 个数、.map 回调内产出 JSX 的次数 */
   stats: { spreads: number; mapJsx: number };
   /** 未能展开的自定义组件及原因 */
@@ -111,7 +115,7 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
   const imports: Record<string, string> = {};
   /** 局部解构别名：const { Panel } = Collapse → Panel → Collapse */
   const aliases: Record<string, string> = {};
-  const out: PrunedFile = { file, imports, roots: [], rootOverlay: [], columns: [], truncated: false, stats: { spreads: 0, mapJsx: 0 }, unresolved: [] };
+  const out: PrunedFile = { file, imports, roots: [], rootOverlay: [], decorated: [], columns: [], truncated: false, stats: { spreads: 0, mapJsx: 0 }, unresolved: [] };
   let nodeCount = 0;
 
   for (const st of sf.statements) {
@@ -249,12 +253,14 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
       let name: string | undefined;
       let lock: string | undefined;
       let renderer: ts.Node | undefined;
+      let editor: ts.Node | undefined;
       for (const p of n.properties) {
         if (!ts.isPropertyAssignment(p) && !ts.isMethodDeclaration(p)) continue;
         const k = p.name.getText(sf);
         if (k === 'name' && ts.isPropertyAssignment(p) && ts.isStringLiteralLike(p.initializer)) name = p.initializer.text;
         if (k === 'lock' && ts.isPropertyAssignment(p)) lock = p.initializer.getText(sf);
         if (k === 'renderer') renderer = p;
+        if (k === 'editor') editor = p;
       }
       if (name) {
         const col: ColumnInfo = { name, ...(lock ? { lock } : {}) };
@@ -278,7 +284,35 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
           walk(renderer);
           if (found[0]) col.link = found[0];
         }
+        if (editor) {
+          const eds: { tag: string; line: number }[] = [];
+          const walkEd = (x: ts.Node) => {
+            if (ts.isJsxElement(x) || ts.isJsxSelfClosingElement(x)) {
+              eds.push({ tag: tagName(ts.isJsxElement(x) ? x.openingElement.tagName : x.tagName, sf), line: lineOf(sf, x) });
+              return; // 只取最外层控件
+            }
+            ts.forEachChild(x, walkEd);
+          };
+          walkEd(editor);
+          if (eds.length) col.editors = eds;
+        }
         out.columns.push(col);
+      }
+    }
+    // getFieldDecorator('x', {...})(<Ctl />)
+    if (
+      ts.isCallExpression(n) &&
+      ts.isCallExpression(n.expression) &&
+      /getFieldDecorator$/.test(n.expression.expression.getText(sf))
+    ) {
+      const a0 = n.expression.arguments[0];
+      const jsx = n.arguments[0];
+      if (a0 && ts.isStringLiteralLike(a0) && jsx && (ts.isJsxElement(jsx) || ts.isJsxSelfClosingElement(jsx))) {
+        out.decorated.push({
+          tag: tagName(ts.isJsxElement(jsx) ? jsx.openingElement.tagName : jsx.tagName, sf),
+          line: lineOf(sf, jsx),
+          name: a0.text,
+        });
       }
     }
     ts.forEachChild(n, collectColumns);

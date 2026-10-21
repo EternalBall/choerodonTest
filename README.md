@@ -291,7 +291,7 @@ diff **以完整测试流程链为主轴**（`compare_axis: full_flow`）：展�
 
 产物 `artifacts/<slug>/page-locators.yaml`；缺口与违规同时写入 `feature.yaml` 的 `review_suggestions.risks`。缺口类型：`needs_kit`、`unresolved_custom`、`ambiguous_multi_instance`、`dynamic_dom`、`large_file_truncated`。
 
-**库组件与别名**：库别名读根 `tsconfig.json` 的 `paths`（`components/*`→hzero-front，`@components/*`→hcm-components-front，均在 node_modules，仓库内无源码）；包内 `@`→`./src` 读各包 `config/config.ts` 的 module-resolver。库组件在 `src/analyzer/libComponents.ts` 登记（已登记：Lov、EditTable、Upload、Checkbox，记为 `lib_known` / `needs_probe`；未登记记 `lib_unknown`）——只登记已核实的用法，DOM 未核实，**不产出 CSS**。带文案按钮的键名：优先取 `onClick` 处理函数名，其次 `src/analyzer/btnKeys.ts` 词表（纯字母文案直接用），词表外的留给 LLM 命名。
+**库组件与别名**：库别名读根 `tsconfig.json` 的 `paths`（`components/*`→hzero-front，`@components/*`→hcm-components-front，均在 node_modules，仓库内无源码）；包内 `@`→`./src` 读各包 `config/config.ts` 的 module-resolver。库组件在 `src/analyzer/libComponents.ts` 登记（已登记：Lov、EditTable、Upload、Checkbox，记为 `lib_known` / `needs_probe`；未登记记 `lib_unknown`）——只登记已核实的用法，DOM 未核实，**不产出 CSS**。列 `editor` 里无 `name` 的控件，字段名取列 `name`，绑定到 `td[data-index=列名]` 单元格（`<列名>Cell`，within 对应表）；`getFieldDecorator('x')(<控件/>)` 旧写法记 `legacy_form_field`（DOM 未核实，待探测）。带文案按钮的键名：优先取 `onClick` 处理函数名，其次 `src/analyzer/btnKeys.ts` 词表（纯字母文案直接用），词表外的留给 LLM 命名。
 
 > 步骤 7（只读探测 UAT 以核对 `needs_probe` 节点）尚未实现。
 

@@ -91,7 +91,10 @@ export async function buildFeatureElementLib(
   const merged: ElementMap = { ...base, ...overlay };
   // 页面 DOM 解析草案：只补充 kit / overlay 没有的 key，不覆盖已有定义
   for (const [k, def] of Object.entries(await loadLocateDraft(feature))) {
-    if (!(k in merged)) merged[k] = def as Record<string, unknown>;
+    if (k in merged) continue;
+    const { kit, ...own } = def as Record<string, unknown> & { kit?: string };
+    // kit 引用项展开成平台 kit 的定义（供 within 等引用），自带字段优先
+    merged[k] = kit && base[kit] ? { ...base[kit], ...own } : (own as Record<string, unknown>);
   }
 
   if (artifact?.field_rules?.length) {
