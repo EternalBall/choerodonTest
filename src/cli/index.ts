@@ -135,6 +135,30 @@ program
   });
 
 program
+  .command('scan-dom')
+  .description('页面 DOM 解析体检：批量静态扫描 packages/*/src/routes，输出定位覆盖率与缺口聚类（不调 LLM、不连 UAT）')
+  .option('-p, --project <path>', '前端仓库根目录', TARGET_PROJECT_DEFAULT)
+  .option('--packages <list>', '只扫指定包，逗号分隔（默认全部）')
+  .option('-o, --out <dir>', '报表输出目录', '/tmp/dom-scan')
+  .action(async (opts: { project: string; packages?: string; out: string }) => {
+    const { scanRoutes, renderSummaryMd, renderPagesCsv, renderSamplesMd } = await import('../analyzer/scanRoutes.js');
+    const root = path.resolve(opts.project);
+    const r = await scanRoutes({
+      root,
+      packages: opts.packages?.split(',').map((x) => x.trim()).filter(Boolean),
+      onPackage: (n, c) => console.log(`扫描 ${n}：${c} 个入口`),
+    });
+    await fs.mkdir(opts.out, { recursive: true });
+    await fs.writeFile(path.join(opts.out, 'summary.json'), JSON.stringify(r.summary, null, 2), 'utf8');
+    await fs.writeFile(path.join(opts.out, 'summary.md'), renderSummaryMd(r.summary), 'utf8');
+    await fs.writeFile(path.join(opts.out, 'pages.csv'), renderPagesCsv(r.pages), 'utf8');
+    await fs.writeFile(path.join(opts.out, 'samples.md'), renderSamplesMd(r.samples, r.summary.causes), 'utf8');
+    const t = r.summary.total;
+    console.log(`页面 ${t.pages} 节点 ${t.nodes} 已绑定 ${t.bound} 覆盖率 ${t.coverage}% 异常 ${t.errors} 截断 ${t.truncated}`);
+    console.log(`报表: ${opts.out}/{summary.md,summary.json,pages.csv,samples.md}`);
+  });
+
+program
   .command('facts')
   .description('静态提取功能目录下的字段事实（fields / queryFields），不调用 LLM，YAML 输出到 stdout')
   .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)

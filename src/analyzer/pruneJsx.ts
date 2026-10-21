@@ -42,6 +42,8 @@ export type PrunedFile = {
   truncated: boolean;
   /** 根 JSX 是否位于 Modal.open / Modal.confirm 等调用参数内（弹窗内容，打开前不在 DOM） */
   rootOverlay: boolean[];
+  /** 动态写法统计：JSX 展开属性 {...x} 个数、.map 回调内产出 JSX 的次数 */
+  stats: { spreads: number; mapJsx: number };
   /** 未能展开的自定义组件及原因 */
   unresolved: { tag: string; source: string; reason: string }[];
 };
@@ -109,7 +111,7 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
   const imports: Record<string, string> = {};
   /** 局部解构别名：const { Panel } = Collapse → Panel → Collapse */
   const aliases: Record<string, string> = {};
-  const out: PrunedFile = { file, imports, roots: [], rootOverlay: [], columns: [], truncated: false, unresolved: [] };
+  const out: PrunedFile = { file, imports, roots: [], rootOverlay: [], columns: [], truncated: false, stats: { spreads: 0, mapJsx: 0 }, unresolved: [] };
   let nodeCount = 0;
 
   for (const st of sf.statements) {
@@ -154,6 +156,15 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
         acc.push(...convert(n));
         return;
       }
+      if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'map') {
+        let hasJsx = false;
+        const probe = (x: ts.Node) => {
+          if (ts.isJsxElement(x) || ts.isJsxSelfClosingElement(x) || ts.isJsxFragment(x)) hasJsx = true;
+          else ts.forEachChild(x, probe);
+        };
+        probe(n);
+        if (hasJsx) out.stats.mapJsx++;
+      }
       ts.forEachChild(n, visit);
     };
     visit(e);
@@ -192,6 +203,7 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
     const props: PrunedNode['props'] = {};
     const extra: PrunedNode[] = [];
     for (const a of attrs.properties) {
+      if (ts.isJsxSpreadAttribute(a)) out.stats.spreads++;
       if (!ts.isJsxAttribute(a)) continue;
       const name = a.name.getText(sf);
       // 属性里的 JSX（如 overlay={menu}/children={<Table/>}）也要保留结构
@@ -302,9 +314,30 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
 }
 
 /** 解析相对 import 到实际文件（.tsx/.ts/.jsx/.js/index.*） */
-export async function resolveRelativeImport(fromFile: string, spec: string): Promise<string | null> {
-  if (!spec.startsWith('.')) return null;
-  const base = path.resolve(path.dirname(fromFile), spec);
+export type ResolveOptions = {
+  /** 别名前缀 → 绝对目录（如 '@' → <pkg>/src）；仅本地目录，库别名不放这里 */
+  aliases?: Record<string, string>;
+  /** 跨入口复用的裁剪缓存（按绝对路径） */
+  cache?: Map<string, PrunedFile>;
+};
+
+/** 把 import 说明符落到绝对基路径：相对路径，或命中本地别名（'@' 需 '@/' 前缀） */
+export function baseFromSpec(fromFile: string, spec: string, aliases?: Record<string, string>): string | null {
+  if (spec.startsWith('.')) return path.resolve(path.dirname(fromFile), spec);
+  for (const [k, dir] of Object.entries(aliases ?? {})) {
+    if (spec === k) return dir;
+    if (spec.startsWith(k + '/')) return path.join(dir, spec.slice(k.length + 1));
+  }
+  return null;
+}
+
+export async function resolveRelativeImport(
+  fromFile: string,
+  spec: string,
+  aliases?: Record<string, string>,
+): Promise<string | null> {
+  const base = baseFromSpec(fromFile, spec, aliases);
+  if (!base) return null;
   const exts = ['.tsx', '.jsx', '.ts', '.js'];
   for (const e of exts) {
     try {
@@ -332,7 +365,12 @@ export type PrunedPage = {
 };
 
 /** 从入口文件出发，跟进相对路径的自定义组件（深度≤maxDepth，防环） */
-export async function prunePage(entryAbs: string, repoRoot: string, maxDepth = 2): Promise<PrunedPage> {
+export async function prunePage(
+  entryAbs: string,
+  repoRoot: string,
+  maxDepth = 2,
+  ropts: ResolveOptions = {},
+): Promise<PrunedPage> {
   const files: PrunedFile[] = [];
   const followed: PrunedPage['followed'] = [];
   const visited = new Set<string>();
@@ -340,7 +378,13 @@ export async function prunePage(entryAbs: string, repoRoot: string, maxDepth = 2
   const walk = async (abs: string, depth: number) => {
     if (visited.has(abs)) return;
     visited.add(abs);
-    const pf = await pruneJsxFile(abs, repoRoot);
+    let cached = ropts.cache?.get(abs);
+    if (!cached) {
+      cached = await pruneJsxFile(abs, repoRoot);
+      ropts.cache?.set(abs, cached);
+    }
+    // 缓存对象共享，unresolved 按本次遍历重算，避免多入口重复累加
+    const pf: PrunedFile = { ...cached, unresolved: [] };
     files.push(pf);
     const tags = new Set<string>();
     const collect = (nodes: PrunedNode[]) => {
@@ -353,9 +397,13 @@ export async function prunePage(entryAbs: string, repoRoot: string, maxDepth = 2
     for (const tag of tags) {
       const spec = pf.imports[tag];
       if (!spec) continue;
-      const target = await resolveRelativeImport(abs, spec);
+      const target = await resolveRelativeImport(abs, spec, ropts.aliases);
       if (!target) {
-        pf.unresolved.push({ tag, source: spec, reason: spec.startsWith('.') ? '相对路径无法解析' : '非相对路径（库内组件），未展开' });
+        pf.unresolved.push({
+          tag,
+          source: spec,
+          reason: spec.startsWith('.') ? '相对路径无法解析' : baseFromSpec(abs, spec, ropts.aliases) ? '别名路径无法解析到文件' : '非本地路径（库/未配置别名），未展开',
+        });
         continue;
       }
       if (depth >= maxDepth) {
@@ -371,11 +419,11 @@ export async function prunePage(entryAbs: string, repoRoot: string, maxDepth = 2
 }
 
 /** 多入口合并：共享 visited，同一文件只裁剪一次 */
-export async function prunePages(entriesAbs: string[], repoRoot: string, maxDepth = 2): Promise<PrunedPage> {
+export async function prunePages(entriesAbs: string[], repoRoot: string, maxDepth = 2, ropts: ResolveOptions = {}): Promise<PrunedPage> {
   const merged: PrunedPage = { entry: entriesAbs.map((e) => path.relative(repoRoot, e)).join(','), files: [], followed: [] };
   const done = new Set<string>();
   for (const e of entriesAbs) {
-    const p = await prunePage(e, repoRoot, maxDepth);
+    const p = await prunePage(e, repoRoot, maxDepth, ropts);
     for (const f of p.files) {
       if (done.has(f.file)) continue;
       done.add(f.file);

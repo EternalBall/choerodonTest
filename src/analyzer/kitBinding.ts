@@ -39,6 +39,8 @@ export type LocGap = {
   node_id?: string;
   detail: string;
   suggested_action: 'add_kit' | 'follow_source' | 'probe_dom' | 'manual_overlay';
+  /** 聚类用的原因标签（体检命令统计）：custom_unresolved:<来源> / kit_missing:<组件> / overlay_table / multi_table_nth / dup_button_text / table_no_dataset */
+  cause?: string;
 };
 
 export type LocPage = {
@@ -65,7 +67,12 @@ export type PageLocateResult = {
 
 const LAYOUT_WRAPPERS = new Set(['Header', 'Content']);
 /** 纯展示组件：无交互定位价值，不记节点也不算缺口 */
-const DISPLAY_ONLY = new Set(['Badge', 'Tooltip', 'Icon', 'Tag', 'Divider', 'Row', 'Col', 'Spin']);
+const DISPLAY_ONLY = new Set([
+  'Badge', 'Tooltip', 'Icon', 'Tag', 'Divider', 'Row', 'Col', 'Spin',
+  // 展示/结构类：Output 是只读展示，Option/Item/ItemGroup 是父组件的子项声明，Column 是 Table 列声明
+  'Output', 'Option', 'Select.Option', 'Item', 'ItemGroup', 'Form.Item', 'Column', 'Timeline', 'Timeline.Item',
+  'Progress', 'Card', 'ModalProvider', 'Steps', 'Steps.Step', 'Step',
+]);
 const FIELD_CONTROL: Record<string, string> = {
   TextField: 'input',
   TextArea: 'input',
@@ -73,6 +80,7 @@ const FIELD_CONTROL: Record<string, string> = {
   UrlField: 'input',
   Password: 'input',
   NumberField: 'number',
+  Currency: 'number',
   CurrencyField: 'number',
   Switch: 'switch',
   Lov: 'lov',
@@ -244,6 +252,7 @@ function visit(ctx: Ctx, n: PrunedNode, region: string | undefined): void {
         node_id: node.id,
         detail: `<${n.tag}>（${ctx.file.imports[n.tag] ?? '来源未知'}）的内部 DOM 未展开，不得绑定其 DOM`,
         suggested_action: 'follow_source',
+        cause: `custom_unresolved:${ctx.file.imports[n.tag.split('.')[0]] ?? '来源未知'}`,
       });
     }
   } else if (n.kind === 'c7n') {
@@ -266,13 +275,14 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
         node_id: node.id,
         detail: `${key ?? 'Table'} 位于弹窗/浮层 JSX（非主渲染树），打开前不在 DOM 中，需探测弹窗容器后再定位`,
         suggested_action: 'probe_dom',
+        cause: 'overlay_table',
       });
       return region;
     }
     const idx = ctx.tableIdx++;
     if (!key) {
       const node = mk(ctx, n, region, { locator_status: 'needs_probe' });
-      ctx.gaps.push({ type: 'ambiguous_multi_instance', node_id: node.id, detail: 'Table 无字面量 dataSet，无法起语义名', suggested_action: 'probe_dom' });
+      ctx.gaps.push({ type: 'ambiguous_multi_instance', node_id: node.id, detail: 'Table 无字面量 dataSet，无法起语义名', suggested_action: 'probe_dom', cause: 'table_no_dataset' });
       return undefined;
     }
     const multi = ctx.tableCount > 1;
@@ -287,6 +297,7 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
         node_id: node.id,
         detail: `同页有 ${ctx.tableCount} 个 c7n Table，${key} 采用 nth=${idx}（源码顺序，条件渲染/弹窗内的表可能错位）`,
         suggested_action: 'probe_dom',
+        cause: 'multi_table_nth',
       });
       addLocator(ctx, `${key}Row`, {
         css: `.c7n-pro-table >> nth=${idx} >> tr.c7n-pro-table-row`,
@@ -336,6 +347,7 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
           node_id: node.id,
           detail: `文案「${n.text}」的按钮在本文件出现 ${ctx.btnTexts.get(n.text)!.length} 次，需 within/region 区分`,
           suggested_action: 'probe_dom',
+          cause: 'dup_button_text',
         });
       }
       return region;
@@ -404,6 +416,7 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
     node_id: node.id,
     detail: `c7n 组件 <${tag}> 在 kit 中无对应键，需补 kit 或 manual_overlay`,
     suggested_action: 'add_kit',
+    cause: `kit_missing:${tag}`,
   });
   return region;
 }
