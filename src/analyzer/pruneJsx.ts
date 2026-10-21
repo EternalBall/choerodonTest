@@ -17,6 +17,8 @@ export type PrunedNode = {
   /** 直接文本子节点（含 intl.get(..).d('文案') 的默认文案） */
   text?: string;
   line: number;
+  /** 渲染取决于运行时（条件 / 循环产出）：DOM 顺序与出现与否不可由源码确定 */
+  conditional?: boolean;
   children: PrunedNode[];
   /** custom 且已跟进展开时的来源文件（相对仓库根） */
   followedFrom?: string;
@@ -155,11 +157,19 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
 
   const jsxChildrenOfExpr = (e: ts.Node, acc: PrunedNode[]) => {
     // 条件 / 逻辑与 / map 回调 里的 JSX
-    const visit = (n: ts.Node) => {
+    const visit = (n: ts.Node, cond = false) => {
       if (ts.isJsxElement(n) || ts.isJsxSelfClosingElement(n) || ts.isJsxFragment(n)) {
-        acc.push(...convert(n));
+        const got = convert(n);
+        // 经过三元 / && / || / ?? / 函数调用（如 map）才到达的 JSX 是否渲染取决于运行时
+        if (cond) for (const g of got) g.conditional = true;
+        acc.push(...got);
         return;
       }
+      const dyn =
+        ts.isConditionalExpression(n) ||
+        ts.isCallExpression(n) ||
+        (ts.isBinaryExpression(n) &&
+          [ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(n.operatorToken.kind));
       if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'map') {
         let hasJsx = false;
         const probe = (x: ts.Node) => {
@@ -169,7 +179,7 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
         probe(n);
         if (hasJsx) out.stats.mapJsx++;
       }
-      ts.forEachChild(n, visit);
+      ts.forEachChild(n, (c) => visit(c, cond || dyn));
     };
     visit(e);
   };
@@ -331,6 +341,14 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
         let overlay = false;
         while (up) {
           if (ts.isCallExpression(up) && /^(Modal|Drawer)\.\w+$|^(modal|drawer)\w*$/.test(up.expression.getText(sf))) {
+            overlay = true;
+            break;
+          }
+          // 回调属性里的 JSX（renderer / editor / expandedRowRenderer / 任意 JSX 属性）：随行/随需渲染，不在主树里
+          if (
+            ts.isJsxAttribute(up) ||
+            (ts.isPropertyAssignment(up) && /^(renderer|editor|expandedRowRenderer|header|footer|title|children)$/.test(up.name.getText(sf)))
+          ) {
             overlay = true;
             break;
           }

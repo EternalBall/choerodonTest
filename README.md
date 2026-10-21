@@ -284,7 +284,7 @@ diff **以完整测试流程链为主轴**（`compare_axis: full_flow`）：展�
 | 步骤 | 模块 | 说明 |
 |------|------|------|
 | ① JSX 裁剪 | `src/analyzer/pruneJsx.ts` | TypeScript 编译器 API 把页面入口裁成「JSX 树 + 字面量 props」；识别 c7n / 原生 / 自定义；列配置里的 renderer 链接；`Modal.open` 内的 JSX 标为浮层；相对路径与本地别名（`@` → 包内 `src`）的自定义组件跟进，深度 ≤2、防环 |
-| ② 确定性绑定 | `src/analyzer/kitBinding.ts` | 组件 + props → kit 键 / 字段定位：Table 以 `dataSet` 命名（同页多表按源码顺序 `nth`，标 `needs_review`）；带文案按钮 → role+name；Lov → `<name>Open`；列内链接 → `td[data-index] a` 且 `within` 对应表 |
+| ② 确定性绑定 | `src/analyzer/kitBinding.ts` | 组件 + props → kit 键 / 字段定位：Table 以 `dataSet` 命名（同页多表：自身及之前的表都无条件渲染 → 正向 `nth`；自身及之后都无条件 → 负向 `nth`（从末尾数）；条件/循环渲染居中，或被跟进的子组件里也有表 → `needs_review` 待探测；回调属性、`Modal.open` 里的表不计入主树）；带文案按钮 → role+name；Lov → `<name>Open`；列内链接 → `td[data-index] a` 且 `within` 对应表 |
 | ③ LLM 补全 | `src/analyzer/llmLocate.ts` | 系统提示词 `knowledge/prompts/page-dom-and-locator.md`，输入裁剪树 + kit 键 + 预绑定；输出 `page_dom_locator/v1` YAML（**不是 JSON**） |
 | ④ 质量门禁 | `src/analyzer/validateLocate.ts` | 8 条：合法 slug、c7n 叶子须 bound 或 needs_kit、无 `element_N`、无逗号并集 CSS、多实例须消歧、未展开自定义组件不得 bound、`elements_draft` 与 locators 一致、bound 须有证据。失败降 `confidence` 并写 gaps，**不放行** |
 | ⑤ 并入元素库 | `platformKit.ts` `buildFeatureElementLib` | 顺序 kit → 功能 overlay → 草案（只补缺失键）→ field_rules → hints；人工 overlay 最终覆盖 |

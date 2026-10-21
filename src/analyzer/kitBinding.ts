@@ -130,6 +130,11 @@ type Ctx = {
   tableOfColumns: Map<string, string>;
   /** 位于弹窗/浮层、没有 locator 的表格键：引用它的 within 需摘除 */
   overlayTableKeys: Set<string>;
+  /** 当前节点是否经条件/循环到达（含祖先） */
+  cond: boolean;
+  /** 主树内 Table 的稳定性判定（按源码顺序）：positive 正向 nth / negative 反向 nth / unstable */
+  tablePlan: { idx: number; cond: boolean }[];
+  followedHasTable: boolean;
   /** 当前遍历的根是否为弹窗/浮层/变量里的 JSX（非主渲染树） */
   overlay: boolean;
 };
@@ -173,6 +178,9 @@ export function bindPage(page: PrunedPage, feature: string, slug: string, bopts:
       overlay: false,
       libAliases: bopts.libAliases ?? {},
       overlayTableKeys,
+      cond: false,
+      tablePlan: [],
+      followedHasTable: false,
       tableOfColumns: new Map(),
       followedTags: new Set(page.followed.filter((x) => x.from === f.file).map((x) => x.tag)),
     };
@@ -182,6 +190,28 @@ export function bindPage(page: PrunedPage, feature: string, slug: string, bopts:
     // 主渲染树 = 非 Modal.open 等调用内的 JSX（pruneJsx.rootOverlay）
     const mainRoots = f.roots.filter((_, i) => !f.rootOverlay[i]);
     ctx.tableCount = countTables(mainRoots);
+    const plan = (ns: PrunedNode[], cond: boolean) => {
+      for (const n of ns) {
+        const c = cond || !!n.conditional;
+        if (n.kind === 'c7n' && n.tag === 'Table') ctx.tablePlan.push({ idx: ctx.tablePlan.length, cond: c });
+        plan(n.children, c);
+      }
+    };
+    plan(mainRoots, false);
+    // 被跟进的组件里若也有主树 Table，页面实际 DOM 顺序会与本文件源码顺序交错
+    const mainTags = new Set<string>();
+    const collectTags = (ns: PrunedNode[]) => {
+      for (const n of ns) {
+        if (n.kind === 'custom') mainTags.add(n.tag.split('.')[0]);
+        collectTags(n.children);
+      }
+    };
+    collectTags(mainRoots);
+    // 只算在主渲染树里使用的被跟进组件（Modal.open 里的组件打开前不在 DOM，不会与主树 Table 交错）
+    for (const fl of page.followed.filter((x) => x.from === f.file && mainTags.has(x.tag))) {
+      const tf = page.files.find((x) => x.file === fl.to);
+      if (tf && countTables(tf.roots.filter((_, i) => !tf.rootOverlay[i])) > 0) ctx.followedHasTable = true;
+    }
 
     const scanTables = (ns: PrunedNode[]) => {
       for (const n of ns) {
@@ -268,7 +298,9 @@ function mk(ctx: Ctx, n: PrunedNode, region: string | undefined, extra: Partial<
   return node;
 }
 
-function visit(ctx: Ctx, n: PrunedNode, region: string | undefined): void {
+function visit(ctx: Ctx, n: PrunedNode, region: string | undefined, cond = false): void {
+  const saved = ctx.cond;
+  ctx.cond = cond || !!n.conditional;
   let childRegion = region;
   const ev = `${ctx.file.file}:${n.line}`;
 
@@ -315,7 +347,8 @@ function visit(ctx: Ctx, n: PrunedNode, region: string | undefined): void {
     childRegion = bindC7n(ctx, n, region, ev) ?? region;
   }
 
-  for (const c of n.children) visit(ctx, c, childRegion);
+  for (const c of n.children) visit(ctx, c, childRegion, ctx.cond);
+  ctx.cond = saved;
 }
 
 function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string): string | undefined {
@@ -342,47 +375,49 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
       ctx.gaps.push({ type: 'ambiguous_multi_instance', node_id: node.id, detail: 'Table 无字面量 dataSet，无法起语义名', suggested_action: 'probe_dom', cause: 'table_no_dataset' });
       return undefined;
     }
-    const multi = ctx.tableCount > 1;
-    const ref = multi
-      ? { css: `.c7n-pro-table >> nth=${idx}`, evidence: `${ev}（同页第 ${idx + 1}/${ctx.tableCount} 个 Table，按源码顺序）`, status: 'needs_review' as const }
-      : { kit: 'table', evidence: ev, status: 'proposed' as const };
-    addLocator(ctx, key, ref);
-    const node = mk(ctx, n, region, { locator_key: key, locator_status: multi ? 'needs_probe' : 'bound' });
-    if (multi) {
+    const total = ctx.tablePlan.length || ctx.tableCount;
+    const multi = total > 1 || ctx.followedHasTable;
+    if (!multi) {
+      addLocator(ctx, key, { kit: 'table', evidence: ev, status: 'proposed' });
+      mk(ctx, n, region, { locator_key: key, locator_status: 'bound' });
+      return bindColumnLinks(ctx, n, key, region, ev);
+    }
+    // 多表定位：只有「渲染顺序可由源码确定」时才给确定性下标。
+    // 正向：自己及之前所有 Table 都无条件渲染 → nth=idx；反向：自己及之后都无条件 → nth=idx-total（Playwright 负下标从末尾数）；
+    // 否则（条件/循环渲染居中，或被跟进组件里也有 Table）顺序不可由源码确定 → 待探测
+    const plan = ctx.tablePlan;
+    const frontStable = !ctx.followedHasTable && plan.slice(0, idx + 1).every((t) => !t.cond);
+    const backStable = !ctx.followedHasTable && plan.slice(idx).every((t) => !t.cond);
+    const nth = frontStable ? idx : backStable ? idx - total : idx;
+    const stable = frontStable || backStable;
+    const why = frontStable
+      ? `前 ${idx + 1} 个 Table 均无条件渲染，源码顺序即 DOM 顺序`
+      : backStable
+        ? `自身及之后 ${total - idx} 个 Table 均无条件渲染，从末尾数下标稳定`
+        : ctx.followedHasTable
+          ? '被跟进的子组件里也有 Table，页面内 DOM 顺序与本文件源码顺序交错'
+          : '该 Table 前后存在条件/循环渲染的 Table，DOM 下标不可由源码确定';
+    addLocator(ctx, key, {
+      css: `.c7n-pro-table >> nth=${nth}`,
+      evidence: `${ev}（同页第 ${idx + 1}/${total} 个 Table；${why}）`,
+      status: stable ? 'proposed' : 'needs_review',
+    });
+    const node = mk(ctx, n, region, { locator_key: key, locator_status: stable ? 'bound' : 'needs_probe' });
+    if (!stable) {
       ctx.gaps.push({
         type: 'ambiguous_multi_instance',
         node_id: node.id,
-        detail: `同页有 ${ctx.tableCount} 个 c7n Table，${key} 采用 nth=${idx}（源码顺序，条件渲染/弹窗内的表可能错位）`,
+        detail: `同页有 ${total} 个 c7n Table，${key} 暂按 nth=${nth}：${why}`,
         suggested_action: 'probe_dom',
-        cause: 'multi_table_nth',
-      });
-      addLocator(ctx, `${key}Row`, {
-        css: `.c7n-pro-table >> nth=${idx} >> tr.c7n-pro-table-row`,
-        evidence: ev,
-        status: 'needs_review',
+        cause: ctx.followedHasTable ? 'multi_table_interleaved' : 'multi_table_unstable',
       });
     }
-    // 列内链接：columns={xxx} 对应的列数组
-    const colVar = ident(n.props.columns);
-    for (const col of ctx.file.columns) {
-      if (!col.link || !colVar || col.group !== colVar) continue;
-      if (!/^[A-Za-z]\w*$/.test(col.name)) continue;
-      const lk = `${col.name}Link`;
-      if (
-        addLocator(ctx, lk, {
-          css: `td[data-index="${col.name}"] a`,
-          within: `${ctx.slug}.${key}`,
-          evidence: `${ctx.file.file}（列 ${col.name} 的 renderer 内 <${col.link.tag}>）`,
-          status: 'proposed',
-        })
-      ) {
-        mk(ctx, { ...n, tag: `${col.link.tag}（列 ${col.name}）`, kind: 'native', text: col.link.text, props: {}, children: [] }, region, {
-          locator_key: lk,
-          locator_status: 'bound',
-        });
-      }
-    }
-    return region;
+    addLocator(ctx, `${key}Row`, {
+      css: `.c7n-pro-table >> nth=${nth} >> tr.c7n-pro-table-row`,
+      evidence: ev,
+      status: stable ? 'proposed' : 'needs_review',
+    });
+    return bindColumnLinks(ctx, n, key, region, ev);
   }
 
   if (tag === 'Button' || tag === 'PermissionButton') {
@@ -502,5 +537,30 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
     suggested_action: 'add_kit',
     cause: `kit_missing:${tag}`,
   });
+  return region;
+}
+
+/** 列内链接：columns={xxx} 对应列数组里 renderer 带 <a>/Button 的列 → `td[data-index] a`，within 对应表 */
+function bindColumnLinks(ctx: Ctx, n: PrunedNode, key: string, region: string | undefined, ev: string): string | undefined {
+  void ev;
+  const colVar = ident(n.props.columns);
+  for (const col of ctx.file.columns) {
+    if (!col.link || !colVar || col.group !== colVar) continue;
+    if (!/^[A-Za-z]\w*$/.test(col.name)) continue;
+    const lk = `${col.name}Link`;
+    if (
+      addLocator(ctx, lk, {
+        css: `td[data-index="${col.name}"] a`,
+        within: `${ctx.slug}.${key}`,
+        evidence: `${ctx.file.file}（列 ${col.name} 的 renderer 内 <${col.link.tag}>）`,
+        status: 'proposed',
+      })
+    ) {
+      mk(ctx, { ...n, tag: `${col.link.tag}（列 ${col.name}）`, kind: 'native', text: col.link.text, props: {}, children: [] }, region, {
+        locator_key: lk,
+        locator_status: 'bound',
+      });
+    }
+  }
   return region;
 }

@@ -51,14 +51,14 @@ describe('pruneJsx', () => {
 });
 
 describe('kitBinding', () => {
-  it('Table 键来自 dataSet，多实例用 nth 并标 needs_review', () => {
+  it('Table 键来自 dataSet；多表且均无条件渲染 → 确定性 nth（proposed、无缺口）', () => {
     assert.equal(tableKeyFromDataSet('purchaseListDS'), 'purchaseListTable');
     assert.equal(tableKeyFromDataSet('headerBindTableDs'), 'headerBindTable');
     const r = bindPage(page(), '测试', 'feat_t');
     assert.equal(r.locators.headerTable.css, '.c7n-pro-table >> nth=0');
-    assert.equal(r.locators.headerTable.status, 'needs_review');
+    assert.equal(r.locators.headerTable.status, 'proposed');
     assert.equal(r.locators.lineTable.css, '.c7n-pro-table >> nth=1');
-    assert.ok(r.gaps.some((g) => g.type === 'ambiguous_multi_instance'));
+    assert.ok(!r.gaps.some((g) => g.type === 'ambiguous_multi_instance'));
   });
   it('按钮：有处理函数名才起键，否则留 unbound + suggest；列内链接 within 表', () => {
     const r = bindPage(page(), '测试', 'feat_t');
@@ -181,5 +181,34 @@ const P = () => (<div><Table dataSet={lineDs} columns={cols} />{getFieldDecorato
     const r = bindPage(page(), 't', 'feat_t');
     r.locators.onlyKit = { kit: 'table', evidence: 'e', status: 'proposed' };
     assert.deepEqual(deriveElementsDraft(r).feat_t.onlyKit, { kit: 'table' });
+  });
+});
+
+describe('多表定位稳定性', () => {
+  const mk = (jsx: string) =>
+    bindPage(
+      { entry: 'a', files: [pruneJsxSource(`import { Table } from 'choerodon-ui/pro';\nconst P = () => (<div>${jsx}</div>);`, 'a/index.tsx')], followed: [] },
+      't',
+      'feat_t',
+    );
+  it('条件渲染的 Table 在中间：前面的用正向 nth，后面的用负向 nth，条件表本身待探测', () => {
+    const r = mk('<Table dataSet={aDS} />{show && <Table dataSet={bDS} />}<Table dataSet={cDS} />');
+    assert.equal(r.locators.aTable.css, '.c7n-pro-table >> nth=0');
+    assert.equal(r.locators.aTable.status, 'proposed');
+    assert.equal(r.locators.cTable.css, '.c7n-pro-table >> nth=-1');
+    assert.equal(r.locators.cTable.status, 'proposed');
+    assert.equal(r.locators.bTable.status, 'needs_review');
+    assert.ok(r.gaps.some((g) => g.cause === 'multi_table_unstable'));
+  });
+  it('条件 Table 在最前、其后有无条件 Table：后者用负向 nth；前者之后的正向不可用', () => {
+    const r = mk('{show && <Table dataSet={aDS} />}<Table dataSet={bDS} /><Table dataSet={cDS} />');
+    assert.equal(r.locators.bTable.css, '.c7n-pro-table >> nth=-2');
+    assert.equal(r.locators.cTable.css, '.c7n-pro-table >> nth=-1');
+    assert.equal(r.locators.aTable.status, 'needs_review');
+  });
+  it('renderer / editor 等回调里的 Table 不计入主树', () => {
+    const r = mk('<Table dataSet={aDS} columns={[{ name: "x", renderer: () => <Table dataSet={innerDS} /> }]} />');
+    assert.equal(r.locators.aTable.kit, 'table');
+    assert.equal(r.locators.innerTable, undefined);
   });
 });

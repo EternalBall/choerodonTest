@@ -59,8 +59,10 @@ describe('scanRoutes', () => {
     assert.equal(foo.spreads, 1);
     assert.equal(foo.mapJsx, 1);
     const bar = pages.find((p) => p.entry.includes('Bar'))!;
-    assert.equal(bar.causes['multi_table_nth'], 2);
-    assert.ok(summary.causes.some((c) => c.cause === 'multi_table_nth' && c.count === 2));
+    // Bar 里两个 Table 均无条件渲染 → 下标稳定，不再算缺口
+    assert.equal(bar.causes['multi_table_nth'], undefined);
+    assert.equal(bar.causes['multi_table_unstable'], undefined);
+    assert.equal(bar.bound, 2);
     assert.equal(summary.total.errors, 0);
   });
 });
