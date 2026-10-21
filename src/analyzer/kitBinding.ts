@@ -1,4 +1,6 @@
 import { cssForFieldRule, lovOpenCss } from '../knowledge/platformKit.js';
+import { buttonKeyFromText } from './btnKeys.js';
+import { lookupKnownLib, matchLibAlias } from './libComponents.js';
 import type { PrunedFile, PrunedNode, PrunedPage } from './pruneJsx.js';
 
 /** 页面 DOM 结构解析的产物类型（对应 knowledge/prompts/page-dom-and-locator.md §3，schema_version page_dom_locator/v1） */
@@ -123,6 +125,7 @@ type Ctx = {
   tableIdx: number;
   btnTexts: Map<string, string[]>;
   followedTags: Set<string>;
+  libAliases: Record<string, string>;
   /** 当前遍历的根是否为弹窗/浮层/变量里的 JSX（非主渲染树） */
   overlay: boolean;
 };
@@ -138,7 +141,12 @@ function addLocator(ctx: Ctx, key: string, def: LocatorDef): boolean {
  * 确定性预绑定：c7n 组件 + 字面量 props → kit key / 字段 locator。
  * 只做有把握的；其余留给 LLM（unbound / needs_kit）。不编造 css。
  */
-export function bindPage(page: PrunedPage, feature: string, slug: string): PageLocateResult {
+export type BindOptions = {
+  /** 库别名前缀 → 包名（loadLibAliases），用于识别 hzero/hcm 库组件 */
+  libAliases?: Record<string, string>;
+};
+
+export function bindPage(page: PrunedPage, feature: string, slug: string, bopts: BindOptions = {}): PageLocateResult {
   const locators: Record<string, LocatorDef> = {};
   const gaps: LocGap[] = [];
   const pages: LocPage[] = [];
@@ -158,6 +166,7 @@ export function bindPage(page: PrunedPage, feature: string, slug: string): PageL
       tableIdx: 0,
       btnTexts: new Map(),
       overlay: false,
+      libAliases: bopts.libAliases ?? {},
       followedTags: new Set(page.followed.filter((x) => x.from === f.file).map((x) => x.tag)),
     };
     // 主页面（页面级）表格总数 = 排除 Modal 内容后的 Table；这里按源码顺序统计所有 c7n Table
@@ -245,15 +254,32 @@ function visit(ctx: Ctx, n: PrunedNode, region: string | undefined): void {
         ctx.regions.push({ id: n.tag, name: `${n.tag}（内容见被跟进文件）`, kind_hint: 'followed_custom' });
       }
     } else if (n.kind === 'custom') {
-      // 已被跟进展开的自定义组件：子树在对应文件里，不算缺口
-      const node = mk(ctx, n, region, { locator_status: 'unresolved_custom' });
-      ctx.gaps.push({
-        type: 'unresolved_custom',
-        node_id: node.id,
-        detail: `<${n.tag}>（${ctx.file.imports[n.tag] ?? '来源未知'}）的内部 DOM 未展开，不得绑定其 DOM`,
-        suggested_action: 'follow_source',
-        cause: `custom_unresolved:${ctx.file.imports[n.tag.split('.')[0]] ?? '来源未知'}`,
-      });
+      const spec = ctx.file.imports[n.tag.split('.')[0]] ?? '来源未知';
+      const lib = matchLibAlias(spec, ctx.libAliases);
+      if (lib) {
+        // 库组件：源码不在仓库内，无法展开。已登记的（Lov/EditTable/Upload/Checkbox）记为「已知、待探测」，未登记的记 lib_unknown
+        const known = lookupKnownLib(lib.pkg, spec, lib.prefix);
+        const node = mk(ctx, n, region, { locator_status: known ? 'needs_probe' : 'unresolved_custom' });
+        ctx.gaps.push({
+          type: known ? 'dynamic_dom' : 'unresolved_custom',
+          node_id: node.id,
+          detail: known
+            ? `<${n.tag}> 来自库 ${lib.pkg}（${spec}），已登记为 ${known.info.role}；库源码不在仓库内，DOM 未核实，需探测后再定位`
+            : `<${n.tag}> 来自库 ${lib.pkg}（${spec}），未登记且库源码不在仓库内`,
+          suggested_action: 'probe_dom',
+          cause: known ? `lib_known:${known.key}` : `lib_unknown:${lib.pkg}:${spec}`,
+        });
+      } else {
+        // 已被跟进展开的自定义组件：子树在对应文件里，不算缺口
+        const node = mk(ctx, n, region, { locator_status: 'unresolved_custom' });
+        ctx.gaps.push({
+          type: 'unresolved_custom',
+          node_id: node.id,
+          detail: `<${n.tag}>（${spec}）的内部 DOM 未展开，不得绑定其 DOM`,
+          suggested_action: 'follow_source',
+          cause: `custom_unresolved:${spec}`,
+        });
+      }
     }
   } else if (n.kind === 'c7n') {
     childRegion = bindC7n(ctx, n, region, ev) ?? region;
@@ -334,7 +360,7 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
       return region;
     }
     const handler = ident(n.props.onClick);
-    const key = handler ? `btn${cap(handler.replace(/^handle|^on/, ''))}` : undefined;
+    const key = handler ? `btn${cap(handler.replace(/^handle|^on/, ''))}` : buttonKeyFromText(n.text);
     const dup = (ctx.btnTexts.get(n.text) ?? []).length > 1;
     if (!key || dup) {
       const node = mk(ctx, n, region, {

@@ -22,7 +22,7 @@ async function fixture() {
     `import { Table, Button, Output } from 'choerodon-ui/pro';
 import Sub from '@/components/Sub';
 import Lib from 'components/Lov';
-export default () => (<div><Button onClick={handleAdd}>新建</Button><Button>导出</Button><Button icon="x" /><Output name="a" /><Table dataSet={fooDS} /><Sub /><Lib {...props} />{list.map((i) => <Button key={i}>{i}</Button>)}</div>);`,
+export default () => (<div><Button onClick={handleAdd}>新建</Button><Button>出炉</Button><Button icon="x" /><Output name="a" /><Table dataSet={fooDS} /><Sub /><Lib {...props} />{list.map((i) => <Button key={i}>{i}</Button>)}</div>);`,
   );
   await w('src/components/Sub/index.tsx', `import { Button } from 'choerodon-ui/pro';\nexport default () => <Button onClick={handleSave}>保存</Button>;`);
   await w('src/routes/Foo/stores/FooDS.ts', `export const x = 1;`);
@@ -52,7 +52,7 @@ describe('scanRoutes', () => {
     // 通过 '@/components/Sub' 别名跟进后，Sub 里的「保存」按钮被绑定（handleSave → btnSave）
     assert.equal(foo.files, 2);
     assert.ok(foo.bound >= 3); // 新建 + 保存 + 单表(kit table)
-    assert.equal(foo.causes['button_needs_key_name'], 1); // 导出（有文案，仅缺语义键名）
+    assert.equal(foo.causes['button_needs_key_name'], 1); // 出炉（有文案，仅缺语义键名）
     assert.equal(foo.causes['button_icon_only'], 2); // 图标按钮 + .map 里无字面量文案的按钮;
     assert.equal(foo.causes['custom_unresolved:components/Lov'], 1);
     assert.equal(foo.causes['kit_missing:Output'], undefined);

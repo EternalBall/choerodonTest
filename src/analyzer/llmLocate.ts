@@ -7,6 +7,7 @@ import { logger } from '../core/logger.js';
 import { featureSlug } from '../knowledge/featureSlug.js';
 import { loadPlatformKit } from '../knowledge/platformKit.js';
 import { deepSeekChat } from './deepseekClient.js';
+import { loadLibAliases } from './libComponents.js';
 import { bindPage, type PageLocateResult } from './kitBinding.js';
 import { prunePages, renderPrunedTree } from './pruneJsx.js';
 import { applyQualityGates, type LocateViolation } from './validateLocate.js';
@@ -88,7 +89,7 @@ function coerce(raw: unknown, pre: PageLocateResult): PageLocateResult {
 export async function locatePages(opts: LocateOptions): Promise<LocateOutcome> {
   const slug = featureSlug(opts.feature);
   const pruned = await prunePages(opts.entries, opts.projectRoot);
-  const pre = bindPage(pruned, opts.feature, slug);
+  const pre = bindPage(pruned, opts.feature, slug, { libAliases: await loadLibAliases(opts.projectRoot) });
   const kit = await loadPlatformKit();
   const kitKeys = Object.keys(kit);
 

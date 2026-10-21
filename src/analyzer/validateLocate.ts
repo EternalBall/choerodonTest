@@ -127,7 +127,7 @@ export function applyQualityGates(
         // 5 多实例同类：多个节点共用同一个 locator_key 且没有 within / nth / kit 消歧
         if (n.locator_status === 'bound' && n.locator_key && n.locator_key in locators) {
           const d = locators[n.locator_key];
-          const shared = pages.flatMap((q) => q.nodes).filter((m) => m !== n && m.kind === 'c7n' && m.locator_key === n.locator_key).length;
+          const shared = p.nodes.filter((m) => m !== n && m.kind === 'c7n' && m.locator_key === n.locator_key).length;
           const disamb = !!d.within || /nth=\d+/.test(d.css ?? '') || !!d.kit;
           if (shared && !disamb) {
             fail(5, `同类多实例 <${n.component}>（${n.id}）与其它节点共用 locator「${n.locator_key}」且缺少 within/nth`);

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { bindPage, type LocGap, type LocNode } from './kitBinding.js';
+import { loadLibAliases } from './libComponents.js';
 import { prunePage, type PrunedFile, type PrunedPage } from './pruneJsx.js';
 
 /**
@@ -109,6 +110,7 @@ export async function scanRoutes(opts: ScanOptions): Promise<{ summary: ScanSumm
     .filter((n) => !opts.packages || opts.packages.includes(n))
     .sort();
 
+  const libAliases = await loadLibAliases(opts.root);
   const pages: PageMetrics[] = [];
   const samples: Record<string, string[]> = {};
   const causePages = new Map<string, Set<string>>();
@@ -140,7 +142,7 @@ export async function scanRoutes(opts: ScanOptions): Promise<{ summary: ScanSumm
     for (const [e, p] of pruned) {
       if (owned.has(e)) continue;
       const rel = path.relative(opts.root, e);
-      const bound = bindPage(p, rel, 'scan');
+      const bound = bindPage(p, rel, 'scan', { libAliases });
       const nodes = bound.pages.flatMap((q) => q.nodes);
       const pfByFile = new Map(p.files.map((f) => [f.file, f]));
       const m: PageMetrics = {
