@@ -159,6 +159,28 @@ program
   });
 
 program
+  .command('coverage')
+  .description('单功能覆盖分析：页面节点绑定率 + 用例触达元素情况（纯静态，不调 LLM、不连 UAT）')
+  .requiredOption('-f, --feature <name>', '功能名或 slug（需已有 artifacts/<slug>/feature.yaml 与 cases/generated/<slug>/suite.yaml）')
+  .option('-p, --project <path>', '前端仓库根目录', TARGET_PROJECT_DEFAULT)
+  .option('--entries <list>', '页面入口文件（相对仓库根，逗号分隔），不填则取 feature.yaml 的 source_hint')
+  .option('-o, --out <dir>', '报表输出目录（默认 /tmp/feature-coverage/<slug>）')
+  .action(async (opts: { feature: string; project: string; entries?: string; out?: string }) => {
+    const { analyzeFeatureCoverage, renderCoverageMd } = await import('../analyzer/featureCoverage.js');
+    const r = await analyzeFeatureCoverage({
+      feature: opts.feature,
+      projectRoot: opts.project,
+      entries: opts.entries?.split(',').map((x) => x.trim()).filter(Boolean),
+    });
+    const out = opts.out ?? path.join('/tmp/feature-coverage', r.slug);
+    await fs.mkdir(out, { recursive: true });
+    await fs.writeFile(path.join(out, 'coverage.json'), JSON.stringify(r, null, 2), 'utf8');
+    await fs.writeFile(path.join(out, 'coverage.md'), renderCoverageMd(r), 'utf8');
+    console.log(`${r.feature}：页面节点 ${r.dom.nodes} 已绑定 ${r.dom.bound}（${r.dom.coverage}%）；用例 ${r.cases.total} 个；用例元素覆盖 ${r.elementCoverage.ratio}%（强 ${r.elementCoverage.touched} + 弱 ${r.elementCoverage.touchedWeak} / ${r.elementCoverage.locatable}）`);
+    console.log(`报表: ${out}/{coverage.md,coverage.json}`);
+  });
+
+program
   .command('facts')
   .description('静态提取功能目录下的字段事实（fields / queryFields），不调用 LLM，YAML 输出到 stdout')
   .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)

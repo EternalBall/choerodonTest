@@ -11,7 +11,7 @@ import { prunePage, type PrunedFile, type PrunedPage } from './pruneJsx.js';
 
 const SKIP_DIRS = new Set(['node_modules', 'stores', 'services', 'models', 'assets', 'styles', '__tests__']);
 /** 容器/区域类节点：设计上不绑定，不计入覆盖率分母 */
-const REGION_ONLY = new Set(['Collapse', 'Panel', 'Collapse.Panel', 'Tabs', 'Tabs.TabPane', 'TabPane']);
+export const REGION_ONLY = new Set(['Collapse', 'Panel', 'Collapse.Panel', 'Tabs', 'Tabs.TabPane', 'TabPane']);
 
 export type PageMetrics = {
   pkg: string;
@@ -81,7 +81,7 @@ export async function discoverEntries(routesDir: string): Promise<string[]> {
 }
 
 /** 未绑定节点的原因（这类节点没有 gap 记录，需要按组件特征归因） */
-function unboundCause(n: LocNode, pf: PrunedFile | undefined): string {
+export function unboundCause(n: LocNode, pf: PrunedFile | undefined): string {
   if (/Button$/.test(n.component)) return n.suggest ? 'button_needs_key_name' : 'button_icon_only';
   if (n.component === 'Table') return 'table_no_dataset';
   if (['Lov', 'Select', 'TextField', 'NumberField', 'Switch', 'DatePicker', 'TextArea', 'IntlField'].includes(n.component)) {
