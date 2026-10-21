@@ -456,4 +456,16 @@ describe('模型直出 steps', () => {
     );
     assert.equal(a.operations[0]!.step_source, 'template');
   });
+
+  it('requires → meta_op.args.skipIfMissing；未定义的 requires 被拒绝', () => {
+    const steps = [
+      { kind: 'goto', name: '进入', page_id: 'config' },
+      { kind: 'click', name: '点列链接', element: 'editBtn', requires: 'colHeader' },
+    ];
+    const ok = compileMetaOpsAndFlows(mk(steps), { force: true, knownElements: ['editBtn', 'colHeader'] });
+    assert.equal(ok.operations[0]!.step_source, 'llm_steps');
+    assert.equal(ok.meta_ops!.find((m) => m.id === 'op1_s2')!.args?.skipIfMissing, 'colHeader');
+    const bad = compileMetaOpsAndFlows(mk(steps), { force: true, knownElements: ['editBtn'] });
+    assert.equal(bad.operations[0]!.step_source, 'template');
+  });
 });

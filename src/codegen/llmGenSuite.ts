@@ -99,6 +99,7 @@ function buildSystemPrompt(allowedActions: string[], ns: string): string {
     - 查询可选文本条件无样本时可省略该字段，只保留必填 Select/Lov
 12. 若输入含 meta_ops + flows：严格按 flows 节点顺序编排 steps，把 meta_op.kind 映射为上表 action
 13. 若仅有 operations：按 execution_chain / preconditions / type 推导最短可执行链路
+15. 若 meta_op.args 含 skipIfMissing，生成的 step 必须原样带上 skipIfMissing 字段，值为该元素加命名空间前缀（依赖可被用户隐藏的列；元素缺失时用例会被跳过）
 14. **测试数据前缀（强制）**：凡是会落库的新建/复制/增行的自由文本字段（编码、名称、描述等），value 必须以 \${ENV.TEST_DATA_PREFIX} 开头，编码类字段写成 \${ENV.TEST_DATA_PREFIX}\${ENV.ATA_RUN_ID}（保证唯一）；不得使用其他前缀或裸文本。Select/Lov 仍用 first:true，不受此条约束
 
 【输出示例】
@@ -217,6 +218,9 @@ function normalizeStep(
     screenshot: s.screenshot === undefined ? true : (s.screenshot as boolean | object),
   };
 
+  if (typeof s.skipIfMissing === 'string' && s.skipIfMissing) {
+    step.skipIfMissing = s.skipIfMissing;
+  }
   if (s.ready && typeof s.ready === 'object') {
     step.ready = s.ready as Suite['cases'][number]['steps'][number]['ready'];
   }

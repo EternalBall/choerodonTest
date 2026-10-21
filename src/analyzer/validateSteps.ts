@@ -13,6 +13,7 @@ export type ValidatedStep = {
   api?: string;
   args?: Record<string, unknown>;
   note?: string;
+  requires?: string;
 };
 
 const NEEDS_ELEMENT = new Set(['click', 'click_expect_api']);
@@ -77,7 +78,11 @@ export function validateOperationSteps(
       if (!s.api) err('click_expect_api 缺 api');
       else if (!apis.includes(normApi(s.api))) err(`api「${s.api}」不在 apis[] / op.api 中，疑似编造`);
     }
+    if (s.requires && known && !known.has(s.requires)) {
+      err(`requires「${s.requires}」在 kit/hints/控件定义中找不到`);
+    }
     steps.push({
+      requires: s.requires,
       kind: kind.data,
       name: s.name,
       page_id: s.page_id,

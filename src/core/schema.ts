@@ -45,6 +45,8 @@ export const StepSchema = z.object({
   ready: ReadySchema,
   /** true | false | { fullPage?, target? }；默认 true 且 fullPage=false */
   screenshot: ScreenshotSchema.default(true),
+  /** 依赖用户可个性化的内容（如被隐藏的列）：该元素不存在时跳过整条用例，而不是报失败 */
+  skipIfMissing: z.string().optional(),
 });
 
 export const CaseSchema = z.object({
@@ -209,6 +211,8 @@ export const OperationStepSchema = z.object({
   note: z.string().optional(),
   /** 依据：源码位置或手册条目，便于人工复核 */
   evidence: z.string().optional(),
+  /** 本步依赖的、可能被用户个性化隐藏的元素（如列头 th）；缺失时用例跳过而非失败 */
+  requires: z.string().optional(),
 });
 
 export const OperationSchema = z.object({

@@ -332,6 +332,7 @@ F. **接口识别（api-binding）**：
    - 严格按手册还原交互：下拉菜单=先点触发按钮再点 dropdownMenuItem；抽屉内容区按钮（okButton:false）定位在 drawerBody 内；行内编辑=先点单元格再操作编辑器；头行联动表=先点头行再勾行
    - evidence 写依据（源码 文件#函数 或 手册名），拿不准的步骤在 note 里说明，不要编造
    - 依赖其它操作产生的数据（如先创建再删除）：在 preconditions 写明，steps 里不重复创建
+   - 步骤依赖的内容若可能被用户个性化隐藏（表格列可被用户在列设置里隐藏），在该步写 requires=对应列头元素（elements_hints 里用 th[data-index="字段名"] 定义），缺失时测试会跳过而不是报失败
    - execution_chain 可不写
 5. apis / elements_hints 为数组；api 来自源码字面量，禁止猜测
 6. **entry.route / pages[].route 必须是前端 SPA 路由**（如 /hwms/.../list），禁止写成 /v1/... 或 services 里的 API 路径；API 只进 operation.api 与 apis[]
@@ -644,6 +645,7 @@ function normalizeSteps(raw: unknown): Array<Record<string, unknown>> | undefine
         args: o.args && typeof o.args === 'object' && !Array.isArray(o.args) ? o.args : undefined,
         note: str(o.note),
         evidence: str(o.evidence),
+        requires: str(o.requires),
       };
     });
   return out.length ? out : undefined;
