@@ -242,4 +242,15 @@ const P = () => (<TarzanSpin><Button onClick={add}>新建</Button><TarzanDrawer 
     assert.equal(await retargetBarrel(path.join(d, 'index.js'), 'Foo'), path.join(d, 'Foo', 'index.tsx'));
     assert.equal(await retargetBarrel(path.join(d, 'index.js'), 'Nope'), path.join(d, 'index.js'));
   });
+
+  it('EnableRender（列 renderer 里的展示组件）透明；TemplatePrintButton / FRPrintButton 记已知待探测', () => {
+    const la = { '@components': 'hcm-components-front' };
+    const src = `import { EnableRender, TemplatePrintButton, FRPrintButton } from '@components/tarzan-ui';
+const P = () => (<div><EnableRender /><TemplatePrintButton printButtonCode="X" /><FRPrintButton kid="K" /></div>);`;
+    const r = bindPage({ entry: 'a', files: [pruneJsxSource(src, 'a/index.tsx')], followed: [] }, 't', 'feat_t', { libAliases: la });
+    assert.equal(r.pages[0].nodes.find((n) => n.component === 'EnableRender')!.transparent, true);
+    assert.equal(r.pages[0].nodes.find((n) => n.component === 'TemplatePrintButton')!.locator_status, 'needs_probe');
+    assert.ok(r.gaps.some((g) => g.cause === 'lib_known:hcm-components-front/@components/tarzan-ui#FRPrintButton'));
+    assert.ok(!r.gaps.some((g) => g.cause?.startsWith('lib_unknown')));
+  });
 });

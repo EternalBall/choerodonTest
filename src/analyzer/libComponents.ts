@@ -40,7 +40,7 @@ export function matchLibAlias(spec: string, libAliases: Record<string, string>):
 
 export type KnownLibComponent = {
   /** 角色，供下游决定探测方式 */
-  role: 'lov-field' | 'edit-table' | 'upload' | 'checkbox' | 'wrapper' | 'drawer' | 'composite-field' | 'opaque-control';
+  role: 'lov-field' | 'edit-table' | 'upload' | 'checkbox' | 'wrapper' | 'drawer' | 'composite-field' | 'opaque-control' | 'display-only';
   /** 已核实的用法依据（仓库内实际写法） */
   evidence: string;
 };
@@ -77,6 +77,9 @@ export const KNOWN_LIB_EXPORTS: Record<string, Record<string, KnownLibComponent>
     C7nFormItemSort: { role: 'wrapper', evidence: '<C7nFormItemSort name itemWidth>内含 <Lov name/><Select name/>（50 处）' },
     TarzanDrawer: { role: 'drawer', evidence: '<TarzanDrawer visible onOk onClose title>（28 处），按 visible 渲染' },
     AttributeDrawer: { role: 'opaque-control', evidence: '<AttributeDrawer type kid className canEdit/> 无子节点（73 处）' },
+    EnableRender: { role: 'display-only', evidence: "仅见于列 renderer：renderer: props => <EnableRender {...props} />，与 editor 的 <Switch /> 成对出现（22 处）" },
+    FRPrintButton: { role: 'opaque-control', evidence: '<FRPrintButton kid queryParams disabled printObjectType/> 打印按钮，无子节点（13 处有效引用；另有大量被注释掉的旧写法）' },
+    TemplatePrintButton: { role: 'opaque-control', evidence: '<TemplatePrintButton disabled printButtonCode printParams permissionList method/> 模板打印按钮，无子节点（6 处走库路径；hwms 等包另有本地副本，库实现是否一致未核实）' },
     LovSelect: { role: 'composite-field', evidence: '<LovSelect dataSet name selectName/>：Lov 与 Select 合一（10 处）' },
   },
 };

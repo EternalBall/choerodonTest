@@ -324,7 +324,7 @@ function visit(ctx: Ctx, n: PrunedNode, region: string | undefined, cond = false
       if (lib) {
         // 库组件：源码不在仓库内，无法展开。已登记的（Lov/EditTable/Upload/Checkbox）记为「已知、待探测」，未登记的记 lib_unknown
         const known = lookupKnownLib(lib.pkg, spec, lib.prefix, ctx.file.importNames[n.tag.split('.')[0]]);
-        if (known?.info.role === 'wrapper') {
+        if (known?.info.role === 'wrapper' || known?.info.role === 'display-only') {
           mk(ctx, n, region, { locator_status: 'unbound', transparent: true });
           overlayChildren = false;
         } else {
