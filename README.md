@@ -22,8 +22,10 @@
 test-03/
 ├── knowledge/platform/     # Kit：choerodon/kit.yaml
 ├── knowledge/playbooks/    # 分析 / 生成时注入的操作手册
+├── knowledge/prompts/      # 独立阶段的系统提示词（page-dom-and-locator.md：页面 DOM 解析）
 ├── artifacts/<featureSlug>/   # 功能路径描述（本地；见下方命名规则）
 │   ├── feature.yaml        # current（当前工作副本）
+│   ├── page-locators.yaml  # 页面 DOM 解析 + 定位绑定结果（含 elements_draft、gaps、质量门禁违规）
 │   ├── v1/                 # 基线快照（snapshot 写入，勿改）
 │   ├── baseline-manifest.yaml
 │   └── compare/            # diff.yaml、report.yaml
@@ -42,7 +44,7 @@ test-03/
 | `meta_ops` / `flows` | 可执行原子与测试流程链（权威编排） | **确定性编译**（`compileFlows`） | `feature.yaml` |
 | suite `steps` | Playwright 关键字步骤 | LLM gen（按 flows） | `suite.yaml` |
 
-分析流水线：源码 → LLM（只认能力）→ `compileMetaOpsAndFlows`（按 `operation.type` 生成 `meta_ops`/`flows`，并反写 `execution_chain` 为 meta_op_id 序列）→ 落盘。
+分析流水线：源码 → **页面 DOM 解析与定位绑定**（见下文「页面 DOM 解析」）→ LLM（只认能力，可直出 `steps`，经 `validateOperationSteps` 校验，失败回退规则模板）→ `compileMetaOpsAndFlows`（按 `operation.type` 生成 `meta_ops`/`flows`，并反写 `execution_chain` 为 meta_op_id 序列）→ 落盘。
 
 ---
 
@@ -126,6 +128,7 @@ pnpm report             # 打开 reports/html
 | `ata confirm` | `-f <功能名> -d <功能目录> [-p 项目根] [-n 备注] [-y]`：人工确认后把 current 备份为 `<功能目录>/ata/V<n>/`（V1、V2…不可变；打印与上一版本的字段差异条数，不动目标项目 git） |
 | `ata versions` | `-d <功能目录> [-p 项目根]`：列出 `ata/` 已确认版本与确认时间 |
 | `ata actions` | 列出 suite 可用 keyword |
+| `ata scan-dom` | **页面 DOM 解析体检**：批量静态扫描 `packages/*/src/routes`，输出定位覆盖率与缺口聚类（不调 LLM、不连 UAT，详见「页面 DOM 解析」） |
 
 ---
 
@@ -272,6 +275,43 @@ diff **以完整测试流程链为主轴**（`compare_axis: full_flow`）：展�
 
 ---
 
+## 页面 DOM 解析与体检
+
+目标：精确识别页面里的 c7n 组件、自定义组件、原生节点，并绑定到可用的定位（元素库）。**只靠源码静态解析，不编造 CSS**；绑不上的记缺口。
+
+### 流水线（`gen` / `analyze` 内自动执行）
+
+| 步骤 | 模块 | 说明 |
+|------|------|------|
+| ① JSX 裁剪 | `src/analyzer/pruneJsx.ts` | TypeScript 编译器 API 把页面入口裁成「JSX 树 + 字面量 props」；识别 c7n / 原生 / 自定义；列配置里的 renderer 链接；`Modal.open` 内的 JSX 标为浮层；相对路径与本地别名（`@` → 包内 `src`）的自定义组件跟进，深度 ≤2、防环 |
+| ② 确定性绑定 | `src/analyzer/kitBinding.ts` | 组件 + props → kit 键 / 字段定位：Table 以 `dataSet` 命名（同页多表按源码顺序 `nth`，标 `needs_review`）；带文案按钮 → role+name；Lov → `<name>Open`；列内链接 → `td[data-index] a` 且 `within` 对应表 |
+| ③ LLM 补全 | `src/analyzer/llmLocate.ts` | 系统提示词 `knowledge/prompts/page-dom-and-locator.md`，输入裁剪树 + kit 键 + 预绑定；输出 `page_dom_locator/v1` YAML（**不是 JSON**） |
+| ④ 质量门禁 | `src/analyzer/validateLocate.ts` | 8 条：合法 slug、c7n 叶子须 bound 或 needs_kit、无 `element_N`、无逗号并集 CSS、多实例须消歧、未展开自定义组件不得 bound、`elements_draft` 与 locators 一致、bound 须有证据。失败降 `confidence` 并写 gaps，**不放行** |
+| ⑤ 并入元素库 | `platformKit.ts` `buildFeatureElementLib` | 顺序 kit → 功能 overlay → 草案（只补缺失键）→ field_rules → hints；人工 overlay 最终覆盖 |
+
+产物 `artifacts/<slug>/page-locators.yaml`；缺口与违规同时写入 `feature.yaml` 的 `review_suggestions.risks`。缺口类型：`needs_kit`、`unresolved_custom`、`ambiguous_multi_instance`、`dynamic_dom`、`large_file_truncated`。
+
+> 步骤 7（只读探测 UAT 以核对 `needs_probe` 节点）尚未实现。
+
+### 体检：`ata scan-dom`
+
+```bash
+pnpm ata scan-dom -p ../../repos/pdl-front                 # 全部包
+pnpm ata scan-dom -p <仓库根> --packages key-hwms-front -o /tmp/dom-scan
+```
+
+纯静态，全仓库约十几秒。输出到 `-o`（默认 `/tmp/dom-scan/`，不进仓库）：
+
+| 文件 | 内容 |
+|------|------|
+| `summary.md` / `summary.json` | 全局与分包覆盖率（严格 = 已绑定；含候选 = 另计带文案按钮的 role+name 候选）、缺口原因排行 |
+| `pages.csv` | 每页一行：节点数、各状态数、覆盖率、`{...props}` 与 `.map` 计数 |
+| `samples.md` | 每类缺口的代表页面，用来挑回归样本 |
+
+页面入口 = `routes` 下含 `index.(tsx|jsx|js)` 的目录；被其它入口跟进的文件并入该页面，不单独计。缺口原因标签如 `button_needs_key_name`、`field_no_literal_name`、`multi_table_nth`、`overlay_table`、`custom_unresolved:<来源>`、`kit_missing:<组件>`、`props_spread`、`map_repeat`。
+
+---
+
 ## 6. MetaOp kind → suite keyword
 
 | kind | keyword |
@@ -297,7 +337,8 @@ diff **以完整测试流程链为主轴**（`compare_axis: full_flow`）：展�
 | `缺少 DEEPSEEK_API_KEY` | 在 `.env` 配置 key |
 | `snapshot` 找不到 feature.yaml | `-f` 用实际产物路径，如 `artifacts/<featureSlug>/feature.yaml` |
 | compare 报缺少 v1 | 先 `snapshot -l v1` |
-| 分析 / 生成质量 | 查 `artifacts/<slug>/llm.raw.json`、`gen.llm.raw.json` |
+| 分析 / 生成质量 | 查 `artifacts/<slug>/llm.raw.json`、`gen.llm.raw.json`；定位问题查 `page-locators.yaml`（`gaps`、`quality_violations`）与 `page-locators.raw.txt` |
+| 依赖账号列个性化的用例被跳过 | 步骤带 `skipIfMissing`（来自 `operation.steps[].requires`）：元素 15 秒内不存在则跳过并说明原因，不改用户列设置 |
 | 套件校验 | `pnpm exec tsx scripts/validate-suite.ts <suite.yaml>`（若项目已配置） |
 
 ---
@@ -327,7 +368,7 @@ pnpm ata test -c cases/example-smoke.yaml --skip-auth
 
 不配 DeepSeek key，由外部 agent（如呆呆鸟）充当 LLM。`.env` 设 `LLM_MODE=handoff` 后：
 
-1. 运行 `pnpm ata gen -f <功能名>`（`-p` 默认 `../../repos/pdl-front`）。
+1. 运行 `pnpm ata gen -f <功能名>`（`-p` 默认 `../../repos/pdl-front`）。一次分析会产生**两类**请求：先是页面 DOM 解析（应答为 YAML，`responseFormatJson=false`），再是功能分析（应答为 JSON）。
 2. 引擎把每次 LLM 请求写到 `artifacts/_llm-handoff/<key>.request.json`（含 `messages`、`responseFormatJson`），随后以**退出码 3** 暂停。
 3. agent 读取 request，按 `messages` 生成回复，**原样**写入同名 `<key>.response.txt`（`responseFormatJson=true` 时必须是合法 JSON）。
 4. 重跑同一条命令；已应答的请求直接复用，直到下一个未应答请求再次暂停，如此直至流程结束。
