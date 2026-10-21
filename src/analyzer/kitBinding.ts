@@ -581,6 +581,34 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
         });
         return region;
       }
+      // name={`prefix${expr}`}：前缀是字面量，实际 name 运行时才定；用属性前缀选择器定位一组同类输入，需人工复核
+      const tpl = typeof n.props.name === 'string' ? /^\{`([A-Za-z]\w*)\$\{/.exec(n.props.name) : null;
+      if (tpl) {
+        const prefix = tpl[1];
+        const key = `${prefix}Any`;
+        const base =
+          ctl === 'lov'
+            ? lovOpenCss(prefix)
+            : ctl === 'select' || ctl === 'date'
+              ? `.page-content .c7n-pro-${ctl === 'date' ? 'calendar-picker' : 'select'}-wrapper:has(input[name="${prefix}"])`
+              : cssForFieldRule(prefix, ctl);
+        if (base) {
+          addLocator(ctx, key, {
+            css: base.replace(`[name="${prefix}"]`, `[name^="${prefix}"]`),
+            evidence: `${ev}（name 为模板串，字面量前缀 ${prefix}，后缀运行时确定）`,
+            status: 'needs_review',
+          });
+          const node = mk(ctx, n, region, { locator_key: key, locator_status: 'bound' });
+          ctx.gaps.push({
+            type: 'ambiguous_multi_instance',
+            node_id: node.id,
+            detail: `<${tag}> name 为模板串 ${n.props.name}，${key} 会匹配同前缀的所有实例，取具体某个需 nth 或补全后缀`,
+            suggested_action: 'probe_dom',
+            cause: 'field_name_template',
+          });
+          return region;
+        }
+      }
       const hint = [n.props.placeholder, n.props.label].find((v) => typeof v === 'string' && !v.startsWith('{')) as string | undefined;
       mk(ctx, n, region, { locator_status: 'unbound', ...(hint ? { suggest: { name: hint } } : {}) });
       return region;

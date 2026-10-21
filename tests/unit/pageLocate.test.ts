@@ -334,3 +334,14 @@ const open2 = () => Drawer.open({ children: <Table dataSet={cDS} /> });`);
     assert.ok(!r.gaps.some((g) => g.cause === 'overlay_table'));
   });
 });
+
+describe('模板串 name', () => {
+  it('字面量前缀 → [name^=] 前缀选择器，needs_review + ambiguous_multi_instance', () => {
+    const src = "import { TextField } from 'choerodon-ui/pro';\nconst P = () => (<div>{list.map((x, index) => <TextField name={`leftValue${index}`} />)}</div>);";
+    const f = pruneJsxSource(src, 'a/index.tsx');
+    const r = bindPage({ entry: 'a/index.tsx', files: [f], followed: [] }, '测试', 'feat_t');
+    assert.equal(r.locators.leftValueAny.css, '.page-content input.c7n-pro-input[name^="leftValue"]');
+    assert.equal(r.locators.leftValueAny.status, 'needs_review');
+    assert.ok(r.gaps.some((g) => g.cause === 'field_name_template'));
+  });
+});
