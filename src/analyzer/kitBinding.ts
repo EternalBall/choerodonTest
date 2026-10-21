@@ -132,6 +132,10 @@ type Ctx = {
   iconCounts: Map<string, number>;
   /** 当前节点祖先累计的三元分支路径 */
   branchPath: string[];
+  /** 当前根下标；弹窗/抽屉根各自的 Table 计划与计数 */
+  rootIdx: number;
+  overlayPlans: Map<number, { cond: boolean }[]>;
+  overlayTableIdx: Map<number, number>;
   /** 同文案按钮的出现信息（节点对象 → 信息），用于判断重复是否真的冲突 */
   btnOcc: Map<string, BtnOcc[]>;
   btnOccOf: WeakMap<PrunedNode, BtnOcc>;
@@ -191,6 +195,9 @@ export function bindPage(page: PrunedPage, feature: string, slug: string, bopts:
       rootCtx: '',
       iconCounts: new Map(),
       branchPath: [],
+      rootIdx: -1,
+      overlayPlans: new Map(),
+      overlayTableIdx: new Map(),
       btnOcc: new Map(),
       btnOccOf: new WeakMap(),
       overlay: false,
@@ -216,6 +223,20 @@ export function bindPage(page: PrunedPage, feature: string, slug: string, bopts:
       }
     };
     plan(mainRoots, false);
+    // Modal.open / Drawer.open 内容各自一棵树：表格在弹层容器内，按该根内的顺序编号
+    f.roots.forEach((r, i) => {
+      if (!f.rootOverlay[i] || !['modal', 'drawer'].includes(f.rootCtx[i] ?? '')) return;
+      const arr: { cond: boolean }[] = [];
+      const collect = (ns: PrunedNode[], cond: boolean) => {
+        for (const n of ns) {
+          const c = cond || !!n.conditional;
+          if (n.kind === 'c7n' && n.tag === 'Table') arr.push({ cond: c });
+          collect(n.children, c);
+        }
+      };
+      collect([r], false);
+      ctx.overlayPlans.set(i, arr);
+    });
     // 被跟进的组件里若也有主树 Table，页面实际 DOM 顺序会与本文件源码顺序交错
     const mainTags = new Set<string>();
     const collectTags = (ns: PrunedNode[]) => {
@@ -278,6 +299,7 @@ export function bindPage(page: PrunedPage, feature: string, slug: string, bopts:
     f.roots.forEach((r, i) => {
       ctx.overlay = !!f.rootOverlay[i];
       ctx.rootCtx = f.rootCtx[i] ?? '';
+      ctx.rootIdx = i;
       ctx.branchPath = [];
       visit(ctx, r, undefined);
     });
@@ -411,6 +433,9 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
   if (tag === 'Table') {
     const ds = ident(n.props.dataSet);
     const key = ds ? tableKeyFromDataSet(ds) : undefined;
+    if (ctx.overlay && key && ctx.overlayPlans.has(ctx.rootIdx)) {
+      return bindModalTable(ctx, n, key, region, ev);
+    }
     if (ctx.overlay) {
       if (key) ctx.overlayTableKeys.add(key);
       const node = mk(ctx, n, region, { locator_status: 'needs_probe' });
@@ -690,4 +715,49 @@ function bindIconButton(ctx: Ctx, n: PrunedNode, icon: string, region: string | 
     });
   }
   return region;
+}
+
+/**
+ * Modal.open / Drawer.open 内容里的表格：先限定到 kit 的 modal / drawer 容器，再在容器内取表。
+ * 容器内多表时按该根内的顺序给下标（规则同主树：无条件渲染才给确定性下标）。容器本身未核实每个弹层的具体形态，标 needs_review。
+ */
+function bindModalTable(ctx: Ctx, n: PrunedNode, key: string, region: string | undefined, ev: string): string | undefined {
+  const plan = ctx.overlayPlans.get(ctx.rootIdx)!;
+  const idx = ctx.overlayTableIdx.get(ctx.rootIdx) ?? 0;
+  ctx.overlayTableIdx.set(ctx.rootIdx, idx + 1);
+  const container = ctx.rootCtx === 'drawer' ? 'drawer' : 'modal';
+  addLocator(ctx, container, { kit: container, evidence: ev, status: 'proposed' });
+  const total = plan.length;
+  let css = '.c7n-pro-table';
+  let note = '弹层内仅一个 Table';
+  let stable = true;
+  if (total > 1) {
+    const front = plan.slice(0, idx + 1).every((t) => !t.cond);
+    const back = plan.slice(idx).every((t) => !t.cond);
+    stable = front || back;
+    css = `.c7n-pro-table >> nth=${front ? idx : back ? idx - total : idx}`;
+    note = front
+      ? `弹层内前 ${idx + 1} 个 Table 均无条件渲染`
+      : back
+        ? `弹层内自身及之后的 Table 均无条件渲染，从末尾数`
+        : '弹层内该 Table 前后有条件/循环渲染的 Table，下标不可由源码确定';
+  }
+  const mkey = `${key}InModal`;
+  addLocator(ctx, mkey, {
+    css,
+    within: `${ctx.slug}.${container}`,
+    evidence: `${ev}（${ctx.rootCtx === 'drawer' ? 'Drawer' : 'Modal'}.open 内容；${note}；弹层容器取 kit ${container}，未核实该弹层形态）`,
+    status: 'needs_review',
+  });
+  const node = mk(ctx, n, region, { locator_key: mkey, locator_status: stable ? 'bound' : 'needs_probe' });
+  if (!stable) {
+    ctx.gaps.push({
+      type: 'ambiguous_multi_instance',
+      node_id: node.id,
+      detail: `弹层内有 ${total} 个 Table，${mkey} 暂按 ${css}：${note}`,
+      suggested_action: 'probe_dom',
+      cause: 'modal_table_unstable',
+    });
+  }
+  return bindColumnLinks(ctx, n, mkey, region, ev);
 }

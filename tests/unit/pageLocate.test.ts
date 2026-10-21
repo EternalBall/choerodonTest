@@ -312,3 +312,25 @@ const P = () => (<div><Button onClick={onOk}>确定</Button></div>);`;
     assert.ok(!r.gaps.some((g) => g.cause === 'dup_button_text'));
   });
 });
+
+describe('弹层内表格', () => {
+  const run = (src: string) =>
+    bindPage({ entry: 'a', files: [pruneJsxSource(src, 'a/index.tsx')], followed: [] }, 't', 'feat_t');
+  it('Modal.open 内的单个表格 → 限定 kit modal，键加 InModal 后缀', () => {
+    const r = run(`import { Table, Modal } from 'choerodon-ui/pro';
+const open = () => Modal.open({ title: 't', children: <Table dataSet={rowDS} /> });
+const P = () => <div><Table dataSet={mainDS} /></div>;`);
+    assert.partialDeepStrictEqual(r.locators.rowTableInModal, { css: '.c7n-pro-table', within: 'feat_t.modal', status: 'needs_review' });
+    assert.equal(r.locators.modal.kit, 'modal');
+    assert.equal(r.locators.mainTable.kit, 'table'); // 主树的表不受弹层表影响
+  });
+  it('弹层内两个无条件表格 → 正向 nth；Drawer.open → 限定 kit drawer', () => {
+    const r = run(`import { Table, Modal } from 'choerodon-ui/pro';
+const open = () => Modal.open({ children: <div><Table dataSet={aDS} /><Table dataSet={bDS} /></div> });
+const open2 = () => Drawer.open({ children: <Table dataSet={cDS} /> });`);
+    assert.equal(r.locators.aTableInModal.css, '.c7n-pro-table >> nth=0');
+    assert.equal(r.locators.bTableInModal.css, '.c7n-pro-table >> nth=1');
+    assert.equal(r.locators.cTableInModal.within, 'feat_t.drawer');
+    assert.ok(!r.gaps.some((g) => g.cause === 'overlay_table'));
+  });
+});
