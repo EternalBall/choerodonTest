@@ -129,8 +129,7 @@ pnpm report             # 打开 reports/html
 | `ata versions` | `-d <功能目录> [-p 项目根]`：列出 `ata/` 已确认版本与确认时间 |
 | `ata actions` | 列出 suite 可用 keyword |
 | `ata scan-dom` | **页面 DOM 解析体检**：批量静态扫描 `packages/*/src/routes`，输出定位覆盖率与缺口聚类（不调 LLM、不连 UAT，详见「页面 DOM 解析」） |
-
----
+| `ata coverage` | ---
 
 ## 1. 生成（gen）
 
@@ -312,7 +311,37 @@ pnpm ata scan-dom -p <仓库根> --packages key-hwms-front -o /tmp/dom-scan
 | `pages.csv` | 每页一行：节点数、各状态数、覆盖率、`{...props}` 与 `.map` 计数 |
 | `samples.md` | 每类缺口的代表页面，用来挑回归样本 |
 
-页面入口 = `routes` 下含 `index.(tsx|jsx|js)` 的目录；被其它入口跟进的文件并入该页面，不单独计。缺口原因标签如 `button_needs_key_name`、`field_no_literal_name`、`multi_table_nth`、`overlay_table`、`custom_unresolved:<来源>`、`kit_missing:<组件>`、`props_spread`、`map_repeat`。
+页面入口 = `routes` 下含 `index.(tsx|jsx|js)` 的目录；被其它入口跟进的文件并入该页面，不单独计。缺口原因标签（`summary.md` 排行）：
+
+| 标签 | 含义 |
+|---|---|
+| `button_needs_key_name` / `button_icon_only` | 带文案按钮缺语义键名（交给 LLM 命名）/ 无文案图标按钮 |
+| `row_icon_button` / `dup_button_text` / `dup_icon_button` | 行内图标按钮每行重复 / 同作用域同文案或同图标按钮重复 |
+| `table_no_dataset` / `multi_table_unstable` / `multi_table_interleaved` / `overlay_table` | 表格无字面量 dataSet / 同页多表位置不稳 / 多表交错 / 库抽屉等回调里的表 |
+| `field_dynamic_name` | `name={变量}`，运行时才定，不绑定 |
+| `field_name_template` | `name={`前缀${expr}`}`，按前缀选择器绑定，needs_review |
+| `field_standalone_labeled` / `field_standalone_bare` | 无 `name` 的独立受控控件（value/onChange 驱动，不走 DataSet）；前者带 placeholder/label，文案写进 `suggest` |
+| `field_no_name_prop` | 其余无 `name` 的字段控件 |
+| `legacy_form_field` | `getFieldDecorator` 旧写法，DOM 未核实 |
+| `lib_known:<组件>` / `lib_unknown:<包>:<spec>` | 已登记但 DOM 未核实的库组件 / 未登记的库导出 |
+| `custom_unresolved:<来源>` / `kit_missing:<组件>` | 自定义组件未跟进 / c7n 组件在 kit 无对应键 |
+| `props_spread` / `map_repeat` | 页面含 `{...props}` / `.map` 生成的节点，静态无法穷举 |
+
+### 单功能覆盖：`ata coverage`
+
+```bash
+pnpm ata coverage -f feat_e98787e8 -p ../../repos/pdl-front          # 采购退货平台
+pnpm ata coverage -f <功能名或slug> -p <仓库根> --entries a/index.tsx,b/index.tsx -o /tmp/cov
+```
+
+纯静态，不调 LLM、不连 UAT；前提是已有 `artifacts/<slug>/feature.yaml` 与 `cases/generated/<slug>/suite.yaml`。报表默认写 `/tmp/feature-coverage/<slug>/coverage.{md,json}`。
+
+- **页面入口**：`feature.yaml` 里 `scope: in_feature` 页面的 `source_hint`（带目录的按路径后缀匹配，裸文件名只在已命中文件的同目录里找），再并入 `page-locators.yaml` 的 `file_entry`；`--entries` 可手动覆盖。
+- **页面侧**：按当前绑定逻辑重算每个入口的节点数、已绑定数、覆盖率与缺口原因（与 `scan-dom` 同口径）。
+- **用例侧**：统计用例数（只读/写）、步骤数，收集 suite 中 `<slug>.<键>` 的元素引用，与页面已绑定的定位键关联。强关联：键名 / role+name / css 相同；弱关联：字段名相同、按钮文案相同（用例 css 里的 `has-text`/`text-is`）、或用例元素落在该表格之内。
+- **报告段落**：汇总、页面入口、「页面可定位但没有用例触达」（待补用例）、「悬空引用」（用例引用但元素库无定义）、「用例引用但页面静态节点里找不到对应」、页面未绑定节点。
+- **注意**：用例元素库多为手写 css（如 `.page-head button:has(.icon-save)`），与页面按 role+name 绑定的键常对不上，“找不到对应”不等于没覆盖，需人工判断；覆盖率里弱关联占比较高时不是精确值。未绑定的页面节点无法判断是否被触达，不计入“可定位元素”。
+- 规则目前只在采购退货平台上验证过。
 
 ---
 
