@@ -181,6 +181,35 @@ program
   });
 
 program
+  .command('probe')
+  .description('只读探测：打开功能页面，核对 needs_review 定位在真实 DOM 里是否成立（不点击、不输入、不保存）')
+  .requiredOption('-f, --feature <name>', '功能名或 slug')
+  .option('-p, --project <path>', '前端仓库根目录', TARGET_PROJECT_DEFAULT)
+  .option('--proxy <url>', '浏览器代理（访问内网时用 bird-net proxy 的地址）')
+  .option('--statuses <list>', '要探测的定位状态，逗号分隔', 'needs_review')
+  .option('-o, --out <dir>', '报表输出目录（默认 /tmp/feature-probe/<slug>）')
+  .action(async (opts: { feature: string; project: string; proxy?: string; statuses: string; out?: string }) => {
+    const { probeFeature, renderProbeMd } = await import('../probe/probeFeature.js');
+    await import('dotenv/config');
+    const baseURL = process.env.BASE_URL;
+    if (!baseURL) throw new Error('未设置 BASE_URL（.env）');
+    const r = await probeFeature({
+      feature: opts.feature,
+      projectRoot: opts.project,
+      baseURL,
+      storageState: path.join(PATHS.authDir, 'user.json'),
+      proxy: opts.proxy,
+      statuses: opts.statuses.split(',').map((x) => x.trim()).filter(Boolean),
+    });
+    const out = opts.out ?? path.join('/tmp/feature-probe', r.slug);
+    await fs.mkdir(out, { recursive: true });
+    await fs.writeFile(path.join(out, 'probe.json'), JSON.stringify(r, null, 2), 'utf8');
+    await fs.writeFile(path.join(out, 'probe.md'), renderProbeMd(r), 'utf8');
+    console.log(`${r.feature}：${Object.entries(r.summary).map(([k, v]) => `${k} ${v}`).join('，') || '无待探测项'}`);
+    console.log(`报表: ${out}/{probe.md,probe.json}`);
+  });
+
+program
   .command('facts')
   .description('静态提取功能目录下的字段事实（fields / queryFields），不调用 LLM，YAML 输出到 stdout')
   .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)
