@@ -56,230 +56,114 @@ const TYPE_ALIASES: Record<string, string> = {
   new: 'create',
 };
 
+/** 结构示意：字段与交互以本次源码为准，禁止照搬本示例里的按钮名/unlock 到任意功能 */
 const JSON_SCHEMA_HINT = `{
-  "feature": "物料维护",
-  "entry": { "route": "/hbase/product/material-manager/list", "menu": "物料维护" },
+  "feature": "示例功能名",
+  "entry": { "route": "/app/demo/list", "menu": "示例菜单" },
   "pages": [
-    { "id": "list", "name": "列表", "route": "/hbase/product/material-manager/list", "scope": "in_feature", "source_hint": "Material/MaterialList" },
-    { "id": "detail", "name": "详情", "route": "/hbase/product/material-manager/dist/:id", "scope": "in_feature", "source_hint": "Material/MaterialDetail" },
-    { "id": "site_assignment", "name": "站点分配", "route": "/hbase/product/material-manager/site-assignment/:materialId", "scope": "in_feature", "source_hint": "Material/MaterialSiteAssignment" },
-    { "id": "site_properties", "name": "物料站点属性维护", "route": "/hbase/product/material-site-properties/detail/:materialId/:materialSiteId", "scope": "external", "note": "独立功能目录 MaterialSiteProperties，只记入口" }
+    { "id": "list", "name": "列表", "route": "/app/demo/list", "scope": "in_feature", "source_hint": "Demo/DemoList" },
+    { "id": "detail", "name": "详情", "route": "/app/demo/dist/:id", "scope": "in_feature", "source_hint": "Demo/DemoDetail" },
+    { "id": "other_feature", "name": "其他功能入口", "route": "/app/other/:id", "scope": "external", "note": "独立功能目录，只记入口" }
   ],
   "page_edges": [
-    { "id": "list_to_detail", "from_page": "list", "to_page": "detail", "via": "row_link" },
-    {
-      "id": "detail_to_site_assignment",
-      "from_page": "detail",
-      "to_page": "site_assignment",
-      "via": "header_button",
-      "control": { "kind": "button", "name": "站点分配", "element": "siteAssignmentBtn" },
-      "preconditions": ["enter_detail"]
-    },
-    {
-      "id": "site_assignment_to_site_properties",
-      "from_page": "site_assignment",
-      "to_page": "site_properties",
-      "via": "row_link",
-      "control": { "kind": "link", "name": "物料站点属性维护", "element": "siteAttrLink" },
-      "preconditions": ["enter_detail", "open_site_assignment"],
-      "note": "to 为 external，不再分析对方页内编辑/新建"
-    }
+    { "id": "list_to_detail", "from_page": "list", "to_page": "detail", "via": "row_link",
+      "control": { "kind": "link", "name": "业务编码", "element": "bizCodeLink" } },
+    { "id": "detail_to_other", "from_page": "detail", "to_page": "other_feature", "via": "link",
+      "control": { "kind": "link", "name": "跳转文案以源码为准", "element": "jumpLink" },
+      "note": "to 为 external，不再分析对方页内编辑/新建" }
   ],
   "operations": [
-    { "id": "query", "name": "查询", "type": "query", "page_id": "list", "scope": "in_feature", "fields": ["物料编码", "物料描述"], "route": "/hbase/product/material-manager/list", "execution_chain": ["list", "query"] },
-    { "id": "create", "name": "新建", "type": "create", "page_id": "detail", "scope": "in_feature", "opens": "page", "initial_mode": "create", "route": "/hbase/product/material-manager/dist/create", "execution_chain": ["list", "create", "fill", "save"] },
-    { "id": "detail", "name": "详情", "type": "detail", "page_id": "detail", "scope": "in_feature", "entry": "row_link", "initial_mode": "view", "from_state": "detail_view", "execution_chain": ["list", "detail"] },
     {
-      "id": "update",
-      "name": "编辑保存",
-      "type": "update",
-      "page_id": "detail",
+      "id": "list_query",
+      "name": "列表查询",
+      "type": "query",
+      "page_id": "list",
       "scope": "in_feature",
-      "initial_mode": "view",
-      "unlock": "click:editBtn",
-      "preconditions": ["enter_detail", "click:editBtn"],
+      "fields": ["bizCode"],
       "steps": [
-        { "kind": "goto", "name": "进入列表", "page_id": "list", "evidence": "routes 配置" },
-        { "kind": "filter_query", "name": "查询", "page_id": "list" },
-        { "kind": "open_detail", "name": "打开详情", "page_id": "list", "evidence": "MaterialList#columns 物料编码链接" },
-        { "kind": "click", "name": "点击编辑", "page_id": "detail", "element": "editBtn", "evidence": "MaterialDetail#Header 编辑按钮" },
-        { "kind": "fill_form", "name": "改表单", "page_id": "detail", "args": { "fields": ["materialName"] } },
-        { "kind": "click_expect_api", "name": "保存", "page_id": "detail", "element": "saveBtn", "api": "/v1/{tenantId}/mt-material/save/ui", "evidence": "MaterialDetail#handleSave" }
-      ],
-      "from_state": "detail_view",
-      "to_state": "detail_edit"
+        { "kind": "goto", "name": "进入列表", "page_id": "list", "evidence": "routes" },
+        { "kind": "filter_query", "name": "查询", "page_id": "list", "args": { "mode": "filterBar", "fields": ["bizCode"] }, "evidence": "TableDS queryFields" }
+      ]
     },
     {
-      "id": "set_default_secondary_uom",
-      "name": "设置默认辅单位",
-      "type": "row_action",
+      "id": "detail_view",
+      "name": "查看详情",
+      "type": "detail",
       "page_id": "detail",
       "scope": "in_feature",
-      "entry": "row_action",
+      "entry": "row_link",
       "initial_mode": "view",
-      "preconditions": ["enter_detail", "secondary_uom_table_has_rows"],
-      "execution_chain": ["list", "detail", "assert_secondary_uom_rows", "click_radio"],
-      "api": "/v1/{tenantId}/pdl-material-uom-convert/secondary-uom/default",
-      "row_target": { "area": "secondaryUomTable", "control": "radio", "column": "defaultFlag", "element": "defaultSecondaryUomRadio" }
+      "steps": [
+        { "kind": "goto", "name": "进入列表", "page_id": "list", "evidence": "routes" },
+        { "kind": "open_detail", "name": "打开详情", "page_id": "list", "element": "bizCodeLink", "evidence": "列表行链接" }
+      ]
     },
     {
-      "id": "site_assignment",
-      "name": "打开站点分配",
-      "type": "related_page",
-      "page_id": "site_assignment",
-      "scope": "in_feature",
-      "entry": "header_button",
-      "entry_control": { "kind": "button", "name": "站点分配", "element": "siteAssignmentBtn" },
-      "opens": "page",
-      "preconditions": ["enter_detail"],
-      "execution_chain": ["list", "detail", "site_assignment"],
-      "from_state": "detail_view",
-      "route": "/hbase/product/material-manager/site-assignment/:materialId",
-      "description": "本功能内关联页入口边；页内编辑另见 site_assignment_update"
-    },
-    {
-      "id": "site_assignment_update",
-      "name": "站点分配编辑保存",
+      "id": "detail_save",
+      "name": "详情保存",
       "type": "update",
-      "page_id": "site_assignment",
+      "page_id": "detail",
       "scope": "in_feature",
-      "route": "/hbase/product/material-manager/site-assignment/:materialId",
-      "initial_mode": "view",
-      "unlock": "click:editBtn",
-      "preconditions": ["enter_detail", "open_site_assignment", "click:editBtn"],
-      "fields": ["revisionFlag", "productionVersionFlag", "enableFlag"],
-      "execution_chain": ["list", "detail", "site_assignment", "edit", "toggle_switch", "save"],
-      "from_state": "site_assignment_view",
-      "to_state": "site_assignment_edit",
-      "api": "/v1/{tenantId}/mt-material/save/site/ui",
-      "api_source": "services/index.ts#SaveMaterialSiteAssignment",
-      "api_kind": "custom_request",
-      "description": "已落库行仅可改 Switch；不可改站点、不可删"
+      "initial_mode": "edit",
+      "preconditions": ["enter_detail"],
+      "description": "若源码页头无「编辑」、由 canEdit/状态直接启用「保存」，则不要写 unlock/click:editBtn",
+      "steps": [
+        { "kind": "goto", "name": "进入列表", "page_id": "list", "evidence": "routes" },
+        { "kind": "open_detail", "name": "打开详情", "page_id": "list", "element": "bizCodeLink", "evidence": "列表行链接" },
+        { "kind": "fill_form", "name": "改表单", "page_id": "detail", "args": { "fields": ["remark"] }, "evidence": "详情表单字段" },
+        { "kind": "click_expect_api", "name": "保存", "page_id": "detail", "element": "saveBtn", "api": "/v1/{tenantId}/demo/save/ui", "evidence": "Detail#handleSave" }
+      ],
+      "api": "/v1/{tenantId}/demo/save/ui",
+      "api_kind": "custom_request"
     },
     {
-      "id": "site_assignment_create",
-      "name": "站点分配增行保存",
-      "type": "create",
-      "page_id": "site_assignment",
-      "scope": "in_feature",
-      "route": "/hbase/product/material-manager/site-assignment/:materialId",
-      "initial_mode": "view",
-      "unlock": "click:editBtn",
-      "preconditions": ["enter_detail", "open_site_assignment", "click:editBtn"],
-      "execution_chain": ["list", "detail", "site_assignment", "edit", "add_line", "activate_lov_cell", "pick_lov", "save"],
-      "api": "/v1/{tenantId}/mt-material/save/site/ui",
-      "api_kind": "custom_request",
-      "description": "未落库新行：加号→点格→pickLov→保存"
-    },
-    {
-      "id": "site_assignment_delete_line",
-      "name": "站点分配删行",
-      "type": "delete",
-      "page_id": "site_assignment",
-      "scope": "in_feature",
-      "route": "/hbase/product/material-manager/site-assignment/:materialId",
-      "unlock": "click:editBtn",
-      "preconditions": ["enter_detail", "open_site_assignment", "click:editBtn"],
-      "execution_chain": ["list", "detail", "site_assignment", "edit", "add_line", "remove_line", "popconfirm", "save"],
-      "api": "/v1/{tenantId}/mt-material/save/site/ui",
-      "api_kind": "custom_request",
-      "description": "仅未落库行有 icon-remove；须先增行再删"
-    },
-    {
-      "id": "site_properties",
-      "name": "物料站点属性维护",
+      "id": "jump_other",
+      "name": "跳转其他功能",
       "type": "related_page",
-      "page_id": "site_properties",
+      "page_id": "other_feature",
       "scope": "external",
-      "entry": "row_action",
-      "entry_control": { "kind": "link", "name": "物料站点属性维护", "element": "siteAttrLink" },
-      "preconditions": ["enter_detail", "open_site_assignment"],
-      "execution_chain": ["list", "detail", "site_assignment", "site_properties"],
-      "route": "/hbase/product/material-site-properties/detail/:materialId/:materialSiteId",
-      "description": "跨功能出边：只分析到入口，禁止再拆对方编辑/新建/校验"
+      "entry": "link",
+      "entry_control": { "kind": "link", "name": "跳转文案以源码为准", "element": "jumpLink" },
+      "preconditions": ["enter_detail"],
+      "description": "跨功能出边：只分析到入口"
     }
   ],
   "page_states": [
     {
-      "id": "detail_view",
-      "name": "详情只读",
-      "route_when": "dist/:id",
-      "mode": "view",
-      "form_disabled": true,
-      "header_buttons": ["编辑", "站点分配", "复制"],
-      "ready_hint": "editBtn"
-    },
-    {
-      "id": "detail_edit",
-      "name": "详情编辑中",
+      "id": "detail_ready",
+      "name": "详情可操作",
       "route_when": "dist/:id",
       "mode": "edit",
       "form_disabled": false,
-      "header_buttons": ["保存", "取消"],
-      "enter_via": ["click:editBtn"],
-      "exit_via": ["click:saveBtn", "click:cancelBtn"],
-      "ready_hint": "saveBtn"
-    },
-    {
-      "id": "site_assignment_view",
-      "name": "站点分配只读",
-      "route_when": "site-assignment/:materialId",
-      "mode": "view",
-      "form_disabled": true,
-      "header_buttons": ["编辑"],
-      "ready_hint": "editBtn"
-    },
-    {
-      "id": "site_assignment_edit",
-      "name": "站点分配编辑中",
-      "route_when": "site-assignment/:materialId",
-      "mode": "edit",
-      "form_disabled": false,
-      "header_buttons": ["保存", "取消"],
-      "enter_via": ["click:editBtn"],
-      "exit_via": ["click:saveBtn", "click:cancelBtn"],
-      "ready_hint": "saveBtn"
-    },
-    {
-      "id": "create",
-      "name": "新建",
-      "route_when": "dist/create",
-      "mode": "create",
-      "form_disabled": false,
-      "header_buttons": ["保存", "取消"],
-      "ready_hint": "saveBtn"
+      "header_buttons": ["保存", "保存并提交"],
+      "ready_hint": "saveBtn",
+      "note": "header_buttons/ready_hint 必须来自本页 JSX；无「编辑」就不要写 editBtn"
     }
   ],
   "field_rules": [
-    { "name": "materialCode", "label": "物料编码", "required": true, "control": "input", "editable_when": ["create", "detail_edit"] },
-    { "name": "siteLov", "label": "站点编码", "required": true, "control": "lov", "editable_when": ["site_assignment_edit"], "row_gate": "!materialSiteId", "note": "仅未落库行可编辑" },
-    { "name": "enableFlag", "label": "启用状态", "control": "switch", "editable_when": ["site_assignment_edit"], "note": "已落库行亦可改" }
+    { "name": "bizCode", "label": "业务编码", "control": "input", "editable_when": ["list"] },
+    { "name": "remark", "label": "备注", "control": "input", "editable_when": ["detail_ready"] }
   ],
   "validations": [
-    { "id": "form_required", "name": "表单必填", "when": "save", "type": "required", "fields": ["materialCode", "materialName", "primaryUomLov"] },
-    { "id": "site_required", "name": "站点分配行站点必填", "when": "site_save", "type": "required", "fields": ["siteLov"], "message_hint": "必填" }
+    { "id": "form_required", "name": "表单必填", "when": "save", "type": "required", "fields": ["remark"] }
   ],
-  "apis": ["/v1/{tenantId}/mt-material/save/ui", "/v1/{tenantId}/mt-material/save/site/ui"],
+  "apis": ["/v1/{tenantId}/demo/save/ui"],
   "elements_hints": [
-    { "ref": "material.editBtn", "role": "button", "name": "编辑" },
-    { "ref": "material.siteAssignBtn", "role": "button", "name": "站点分配" },
-    { "ref": "material.siteAssign.addLineBtn", "role": "button", "name": "新增行" }
+    { "ref": "bizCodeLink", "role": "link", "name": "业务编码" },
+    { "ref": "saveBtn", "role": "button", "name": "保存" }
   ],
   "notes": [
-    "本功能内页（同 Material/ 目录、同 material-manager 路由族）须分析全部能力与执行链路",
-    "跳到其他功能（如 MaterialSiteProperties）只记 related_page + page_edges，停止深挖"
+    "本功能内页须按源码分析全部能力；跨功能只记 related_page",
+    "禁止套用其它业务的页头交互（例如无编辑按钮却写 click:editBtn）"
   ],
   "review_suggestions": {
     "status": "pending_human_review",
     "confidence": 0.8,
-    "risks": ["站点分配：已落库行无删钮、不可改站点；删行须先增行；空表增行后需选站点"],
-    "extend_paths": [
-      { "kind": "data_fixture", "item": "准备可进站点分配的样例物料", "why": "in_feature 页链路前置", "priority": "high" }
-    ],
+    "risks": [],
+    "extend_paths": [],
     "assert_checklist": [
       "pages 区分 in_feature / external",
-      "本功能内关联页有 update/create/validations，而非仅 related_page",
-      "表格行编辑已读 editor/renderer 行门禁（row_gate），未误把已落库行当可删/可改 Lov",
+      "header_buttons / unlock / ready_hint 与源码页头一致",
       "会 clickExpectApi 的 op.api 为源码字面量且可在 apis[] 核对",
       "external 出边无对方页内编辑用例"
     ]
@@ -288,26 +172,35 @@ const JSON_SCHEMA_HINT = `{
 }`;
 
 const SYSTEM_PROMPT = `你是前端功能分析助手，服务于 UI 自动化测试配置生成。
-根据源码（多为 React + Choerodon UI / HZero）识别业务功能、多页面能力与可执行链路。
+根据**本次提供的源码**（多为 React + Choerodon UI / HZero）识别业务功能、多页面能力与可执行链路。
+下方 JSON 仅为字段结构示意，**不是**业务模板；禁止把示意里的按钮、unlock、路由、API 套到当前功能。
 
 【分析边界 — 最重要】
-A. 先识别本功能 pages[]：入口列表/详情，以及同功能目录、同路由族下的关联页（例：Material/MaterialSiteAssignment 属物料维护 → scope=in_feature）。
-B. 对本功能内每一个 in_feature 页面，必须分析其全部能力：查询/新建/详情/编辑保存/复制/行内动作/校验报错/页头按钮/状态机；写清 page_id、preconditions、unlock、api（执行链路由引擎按 type 编译，勿自由发明步骤词）。
-C. 若某跳转进入其他功能（不同菜单模块、独立功能包，如 MaterialSiteProperties、其他 *Manager）：
+A. 先识别本功能 pages[]：入口列表/详情，以及同功能目录、同路由族下的关联页 → scope=in_feature。
+B. 对本功能内每一个 in_feature 页面，必须按**本页源码**分析全部能力：查询/新建/详情/保存或编辑保存/行内动作/校验/页头按钮/状态机；写清 page_id、preconditions、api；steps 中的 element 必须在源码或 elements_hints 有依据。
+B1. **页头交互以 JSX 为准（禁止套模板）**：
+   - header_buttons / ready_hint / unlock / steps 里的按钮名，必须来自本页 PermissionButton / Header 实际文案。
+   - 源码有「编辑」再点编辑再保存 → 才写 unlock: click:editBtn 与 click:editBtn 步骤。
+   - 源码无「编辑」、用 canEdit/任务状态等直接启用「保存/保存并提交」→ initial_mode 可为 edit，**不要**写 unlock 或 click:editBtn；ready_hint 用 saveBtn（或页头真实主按钮）。
+   - 禁止因「变量名叫 canEdit」就臆造编辑按钮。
+B2. **JSX 入口覆盖（大文件切片）**：源码块可能带 \`[jsx-megalith-slice]\` / \`[jsx-child-full]\` 或注释 \`JSX_ENTRY\`（entry_labels / jsx_tags / local_children）。
+   - 凡出现在 entry_labels、页头 PermissionButton、或 JSX 挂载的本地子组件中的能力，必须写入 operations（或 notes 写明 skipped_reason）。
+   - 子组件 FILE 块须分析打开弹窗/抽屉、保存 API 与 enabled/disabled 条件，写入 preconditions。
+C. 若某跳转进入其他功能（不同菜单模块、独立功能包）：
    - 只输出一条 related_page（scope=external）+ page_edges 出边；
    - 禁止再分析对方页的编辑/新建/删除/校验/page_states。
 D. related_page 只表示「入口边」。本功能内关联页若还有编辑/增行/保存，必须另出 update/create/row_action（page_id 指向该页），不可只用一条 related_page 敷衍。
-E. **表格行编辑模式**（页头编辑后表头 icon-add 增行、行内 Lov/Switch、icon-remove+Popconfirm、再页头保存）：
-   与页头「新建」、只读 row_action 区分；须输出 create（增行）/ delete（删行）/ update，并写 execution_chain。
-   **必须读列 editor/renderer 条件**（如 !record.get('materialSiteId')），禁止套「编辑后每行都能删/改 Lov」：
-   - 已落库行仅可改无行门禁的控件（常为 Switch）→ update.fields + execution_chain 含 toggle_switch；
-   - Lov/删行仅未落库行 → create 用 add_line；delete 必须先 add_line 再 remove_line（禁止 table_has_rows 当删已落库行前置）；
-   - field_rules 对有条件的字段写 row_gate（如 "!materialSiteId"）。
+E. **表格行编辑模式**（若源码确有：页头解锁后表头 icon-add 增行、行内 Lov/Switch、icon-remove+Popconfirm、再页头保存）：
+   与页头「新建」、只读 row_action 区分；须输出 create（增行）/ delete（删行）/ update。
+   **必须读列 editor/renderer 条件**（如 !record.get('xxxId')），禁止套「编辑后每行都能删/改 Lov」：
+   - 已落库行仅可改无行门禁的控件（常为 Switch）→ update.fields + toggle_switch；
+   - Lov/删行仅未落库行 → create 用 add_line；delete 须先 add_line 再 remove_line；
+   - field_rules 对有条件的字段写 row_gate。
    用户消息中的 PLAYBOOK choerodon-table-row-edit 正文优先于本摘要。
 F. **接口识别（api-binding）**：
    - 从触发链抽 url 字面量：services 工厂 / useRequest / 事件内 request·fetch / DS transport；禁止按资源名猜 REST。
    - 每条会改数据的 op 写 api（字面量）+ 尽量 api_source、api_kind（custom_request|ds_transport|inline|unknown）。
-   - 未见字面量 → api 留空，禁止编造（如勿把站点分配写成 mt-material-site/save/ui；正确常为 mt-material/save/site/ui）；不确定处写入 notes / risks。
+   - 未见字面量 → api 留空，禁止编造；不确定处写入 notes / risks。
    - operation.api 必须能在源码或 apis[] 中找到；query 与 save 分开绑。
    用户消息中的 PLAYBOOK api-binding 正文优先于本摘要。
 
@@ -316,32 +209,34 @@ F. **接口识别（api-binding）**：
 2. 必须输出 pages、page_edges、operations、page_states、field_rules、validations、review_suggestions
 3. operations[].id 必须有（英文蛇形）；type 只能是：
    query | create | detail | table_picker | update | copy | related_page | delete | row_action | other
-   - 页头「编辑→改表单→保存」→ update（必须写 unlock / preconditions）
+   - 页头确有「编辑→改表单→保存」→ update，并写 unlock / preconditions
+   - 页头直接「保存」且无编辑键 → update，不写 unlock:editBtn
    - 子表/列表行内 Radio、Switch、行按钮，调专用 API、不点页头保存 → row_action（api + row_target）
    - Lov/弹表 → table_picker
    - 跳转其他页 → related_page（entry、entry_control、preconditions、scope）
      行内 a[onClick] 无 href：entry_control.kind 可为 link，但 elements_hints 须用 text/css（.action-link a），禁止 role=link
    - 禁止把设默认、行启用等标成 update
-4. 每个 operation 尽量填 page_id、scope、preconditions、unlock、api
+4. 每个 operation 尽量填 page_id、scope、preconditions、api；unlock 仅当源码存在对应解锁控件时填写
 11. **每个 operation 必须写 steps（有序执行步骤，这是测试流程的主依据）**：
    - 每步 {kind, name, page_id?, element?, api?, args?, note?, evidence}
    - kind 只能是：goto | filter_query | assert_table_rows | open_detail | click | fill | fill_form | pick_lov | click_expect_api | assert | set_var
    - 第一步必须是 goto（page_id 取 pages[].id；详情页等带 :id 的路由，先 goto 列表再 open_detail 或点链接）
-   - click / click_expect_api 必须写 element：优先用平台 kit 已有键（见 PLAYBOOK 与 kit），否则在 elements_hints 里给出同名定义；禁止凭空编名字
+   - click / click_expect_api 必须写 element：优先用平台 kit 已有键（见 PLAYBOOK 与 kit），否则在 elements_hints 里给出同名定义；禁止凭空编名字（尤其禁止无源码依据的 editBtn）
    - 会发请求的最后一步用 click_expect_api，api 必须是源码字面量且出现在 apis[]；若点击后还有确认弹窗（Modal.confirm→confirmModalOk；Popconfirm→confirmBtn），接口断言放在确认那一步
-   - 严格按手册还原交互：下拉菜单=先点触发按钮再点 dropdownMenuItem；抽屉内容区按钮（okButton:false）定位在 drawerBody 内；行内编辑=先点单元格再操作编辑器；头行联动表=先点头行再勾行
+   - 严格按手册与本页源码还原交互：下拉菜单=先点触发按钮再点 dropdownMenuItem；抽屉内容区按钮定位在 drawerBody 内；行内编辑=先点单元格再操作编辑器；头行联动表=先点头行再勾行
    - evidence 写依据（源码 文件#函数 或 手册名），拿不准的步骤在 note 里说明，不要编造
    - 依赖其它操作产生的数据（如先创建再删除）：在 preconditions 写明，steps 里不重复创建
    - 步骤依赖的内容若可能被用户个性化隐藏（表格列可被用户在列设置里隐藏），在该步写 requires=对应列头元素（elements_hints 里用 th[data-index="字段名"] 定义），缺失时测试会跳过而不是报失败
    - execution_chain 可不写
 5. apis / elements_hints 为数组；api 来自源码字面量，禁止猜测
-6. **entry.route / pages[].route 必须是前端 SPA 路由**（如 /hwms/.../list），禁止写成 /v1/... 或 services 里的 API 路径；API 只进 operation.api 与 apis[]
+6. **entry.route / pages[].route 必须是前端 SPA 路由**（如 /hwms/.../list），禁止写成 /v1/... 或 services 里的 API 路径；API 只进 operation.api 与 apis[]。
+   引擎会在分析后用 packages 下各包 config/config.ts 的 path+component 覆盖路由；若源码未见真实 path，可填占位（如 /pending/list），勿按模块名猜测路径
 7. notes 写清自动化陷阱与跨功能停止点
 8. review_suggestions.status 固定 pending_human_review
-9. assert_checklist 含：会 clickExpectApi 的 op.api 可在源码/apis 中核对；entry.route 非 API
+9. assert_checklist 含：会 clickExpectApi 的 op.api 可在源码/apis 中核对；entry.route 非 API；页头按钮与源码一致
 10. **不要输出 meta_ops / flows**（由引擎根据 steps 编译并校验；输出也会被丢弃）
 
-【输出示例】
+【输出结构示意（勿照搬业务内容）】
 ${JSON_SCHEMA_HINT}`;
 
 /** DeepSeek Chat：`response_format: json_object` + 本地归一化；注入 playbooks */

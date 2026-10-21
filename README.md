@@ -42,7 +42,7 @@ test-03/
 | `meta_ops` / `flows` | 可执行原子与测试流程链（权威编排） | **确定性编译**（`compileFlows`） | `feature.yaml` |
 | suite `steps` | Playwright 关键字步骤 | LLM gen（按 flows） | `suite.yaml` |
 
-分析流水线：源码 → LLM（只认能力）→ `compileMetaOpsAndFlows`（按 `operation.type` 生成 `meta_ops`/`flows`，并反写 `execution_chain` 为 meta_op_id 序列）→ 落盘。
+分析流水线：源码 → LLM（只认能力）→ **`packages/<pkg>/config/config.ts` 按 component 覆盖 `entry`/`pages` 路由** → `compileMetaOpsAndFlows`（按 `operation.type` 生成 `meta_ops`/`flows`，并反写 `execution_chain` 为 meta_op_id 序列）→ 落盘。`-p` 宜指向 monorepo 仓根（含 `packages/`），`-d` 指向功能 `src/routes/...` 目录以便对齐 component。
 
 ---
 

@@ -3,6 +3,10 @@ import type { FeatureArtifact } from '../core/schema.js';
 import { loadPlaybooksForSources } from '../knowledge/loadPlaybooks.js';
 import { loadFeatureElementsOverlay, loadPlatformKit } from '../knowledge/platformKit.js';
 import { compileMetaOpsAndFlows } from './compileFlows.js';
+import {
+  applyConfigRoutes,
+  loadPackageRouteIndex,
+} from './extractPackageRoutes.js';
 import { retrieveFeatureCode } from './retrieve.js';
 import { extractFieldFacts } from './staticExtract.js';
 import { llmAnalyzeFeature } from './llmAnalyze.js';
@@ -18,8 +22,9 @@ export type AnalyzeOptions = {
 const FEATURE_DIR_MAX_TOTAL_CHARS = 400_000;
 
 /**
- * 分析功能：检索源码 + playbooks → DeepSeek（能力层）→ 确定性编译 meta_ops/flows。
+ * 分析功能：检索源码 + playbooks → DeepSeek（能力层）→ config.ts 覆盖路由 → 编译 meta_ops/flows。
  * 失败直接抛错，无启发式兜底（ADR 0011）；缺手册则失败（ADR 0007/0008）。
+ * entry/pages 路由以 packages 下各包 config/config.ts 为准，不采信模型推断。
  */
 export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtifact> {
   const { snippets } = await retrieveFeatureCode({
@@ -35,11 +40,19 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
     playbooks,
     maxTotalChars: opts.featureDir ? FEATURE_DIR_MAX_TOTAL_CHARS : undefined,
   });
+  // 路由：从 monorepo packages/<pkg>/config/config.ts 按 component 对齐覆盖（确定性）
+  const routeIndex = await loadPackageRouteIndex(opts.projectRoot);
+  const withRoutes = applyConfigRoutes(raw, {
+    index: routeIndex,
+    snippets,
+    projectRoot: opts.projectRoot,
+    featureDir: opts.featureDir,
+  });
   const knownElements = [
     ...Object.keys(await loadPlatformKit()),
     ...Object.keys(await loadFeatureElementsOverlay(opts.feature)),
   ];
-  const artifact = compileMetaOpsAndFlows(raw, { force: true, knownElements });
+  const artifact = compileMetaOpsAndFlows(withRoutes, { force: true, knownElements });
   // 字段事实由 AST 确定性提取，不让 LLM 参与，保证同源码两次分析结果一致
   artifact.field_facts = extractFieldFacts(snippets);
   logger.info(
@@ -47,6 +60,7 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
       feature: opts.feature,
       analyzer: artifact.analyzer,
       model: artifact.model,
+      entry: artifact.entry.route,
       operations: artifact.operations.length,
       meta_ops: artifact.meta_ops?.length ?? 0,
       flows: artifact.flows?.length ?? 0,
