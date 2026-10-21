@@ -45,6 +45,8 @@ export const StepSchema = z.object({
   ready: ReadySchema,
   /** true | false | { fullPage?, target? }；默认 true 且 fullPage=false */
   screenshot: ScreenshotSchema.default(true),
+  /** 依赖用户可个性化的内容（如被隐藏的列）：该元素不存在时跳过整条用例，而不是报失败 */
+  skipIfMissing: z.string().optional(),
 });
 
 export const CaseSchema = z.object({
@@ -152,11 +154,13 @@ export const RowTargetSchema = z.object({
   /** 所在区域，如 secondaryUomTable */
   area: z.string().optional(),
   /** 控件形态 */
-  control: z.enum(['radio', 'switch', 'button', 'link', 'other']).optional(),
+  control: z.enum(['radio', 'switch', 'button', 'link', 'lov', 'other']).optional(),
   /** 列/字段名，如 defaultFlag */
   column: z.string().optional(),
   /** 元素库 key，如 defaultSecondaryUomRadio */
   element: z.string().optional(),
+  /** 行内编辑器需先点击的单元格元素 key（Lov/Switch 等行内编辑） */
+  cell_element: z.string().optional(),
 });
 
 /** related_page / 跳转入口：显式控件，禁止 gen 猜元素 key */
@@ -194,6 +198,21 @@ export const PageEdgeSchema = z.object({
   control: EntryControlSchema.optional(),
   preconditions: z.array(z.string()).optional(),
   note: z.string().optional(),
+});
+
+/** 大模型直接给出的执行步骤；kind 必须落在 MetaOpKind 白名单内，由 validateSteps 校验 */
+export const OperationStepSchema = z.object({
+  kind: z.string(),
+  name: z.string(),
+  page_id: z.string().optional(),
+  element: z.string().optional(),
+  api: z.string().optional(),
+  args: z.record(z.unknown()).optional(),
+  note: z.string().optional(),
+  /** 依据：源码位置或手册条目，便于人工复核 */
+  evidence: z.string().optional(),
+  /** 本步依赖的、可能被用户个性化隐藏的元素（如列头 th）；缺失时用例跳过而非失败 */
+  requires: z.string().optional(),
 });
 
 export const OperationSchema = z.object({
@@ -240,6 +259,10 @@ export const OperationSchema = z.object({
     .optional(),
   /** 行内动作目标 */
   row_target: RowTargetSchema.optional(),
+  /** 大模型直接给出的有序步骤；校验通过则优先于规则模板 */
+  steps: z.array(OperationStepSchema).optional(),
+  /** 编译来源：llm_steps=采用模型步骤；template=规则模板（含校验失败回退） */
+  step_source: z.enum(['llm_steps', 'template']).optional(),
 });
 
 /** 元操作 kind：与 keywords action 对齐，供流程编排 */

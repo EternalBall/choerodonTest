@@ -249,3 +249,223 @@ describe('行编辑模式下的增行(create)', () => {
     assert.ok(!kinds.some((id) => id.startsWith('click_create_')), '不应出现页头新建');
   });
 });
+
+describe('头行联动与抽屉', () => {
+  const art = (): FeatureArtifact =>
+    baseArtifact({
+      feature: '送货单',
+      entry: { route: '/p/list' },
+      pages: [
+        { id: 'list', name: '列表', route: '/p/list', scope: 'in_feature' },
+        { id: 'order', name: '订单', route: '/o/list', scope: 'external' },
+      ],
+      page_edges: [
+        {
+          id: 'list_to_order',
+          from_page: 'list',
+          to_page: 'order',
+          via: 'row_link',
+          control: { kind: 'link', name: '订单号', element: 'poLink' },
+        },
+      ],
+      operations: [
+        {
+          id: 'sign',
+          name: '签收确认',
+          type: 'row_action',
+          page_id: 'list',
+          api: '/v1/x/sign',
+          execution_chain: ['list', 'query', 'click_header_row', 'select_line_row', 'sign', 'confirm_modal'],
+        },
+        {
+          id: 'mlt',
+          name: '创建物料批',
+          type: 'create',
+          page_id: 'list',
+          api: '/v1/x/save',
+          entry_control: { kind: 'button', name: '创建物料批', element: 'createMltBtn' },
+          execution_chain: ['list', 'query', 'select_header_row', 'select_line_rows', 'open_drawer', 'fill', 'save'],
+        },
+        {
+          id: 'po',
+          name: '跳转订单',
+          type: 'related_page',
+          page_id: 'order',
+          scope: 'external',
+          execution_chain: ['list', 'query', 'click_header_row', 'po'],
+        },
+      ],
+    } as Partial<FeatureArtifact>);
+
+  const kinds = (a: FeatureArtifact, flowId: string) => {
+    const flow = a.flows!.find((f) => f.id === flowId)!;
+    return flow.nodes.map((n) => a.meta_ops!.find((m) => m.id === n.meta_op_id)!);
+  };
+
+  it('签收确认：点头行→勾选行→点按钮→确认，接口挂在确认上', () => {
+    const steps = kinds(compileMetaOpsAndFlows(art(), { force: true }), 'sign');
+    assert.deepEqual(
+      steps.map((s) => s.id),
+      [
+        'goto_list',
+        'filter_query_list',
+        'click_header_row_list',
+        'select_line_row_list',
+        'action_sign',
+        'confirm_modal_sign',
+      ],
+    );
+    assert.equal(steps[4]!.kind, 'click');
+    assert.equal(steps[5]!.kind, 'click_expect_api');
+    assert.equal(steps[5]!.api, '/v1/x/sign');
+  });
+
+  it('创建物料批：不套用「新建」模板，而是 勾选→开抽屉→填写→保存', () => {
+    const steps = kinds(compileMetaOpsAndFlows(art(), { force: true }), 'mlt');
+    const ids = steps.map((s) => s.id);
+    assert.ok(!ids.includes('click_create_list'));
+    assert.deepEqual(ids.slice(2), [
+      'click_header_row_list',
+      'select_line_row_list',
+      'open_drawer_mlt',
+      'fill_mlt',
+      'drawer_save_mlt',
+    ]);
+    const save = steps.find((s) => s.id === 'drawer_save_mlt')!;
+    assert.equal(save.element, 'drawerBodySaveBtn');
+    assert.equal(save.kind, 'click_expect_api');
+    assert.equal(steps.find((s) => s.id === 'open_drawer_mlt')!.element, 'createMltBtn');
+  });
+
+  it('Modal.confirm 用 confirmModalOk，Popconfirm 的 confirm 仍是 confirmBtn', () => {
+    const a = compileMetaOpsAndFlows(art(), { force: true });
+    assert.equal(kinds(a, 'sign').pop()!.element, 'confirmModalOk');
+  });
+
+  it('下拉菜单：先点触发按钮，再按文本点菜单项，接口挂在菜单项上', () => {
+    const base = art();
+    base.operations!.push({
+      id: 'st',
+      name: '状态变更-取消',
+      type: 'row_action',
+      page_id: 'list',
+      api: '/v1/x/status',
+      entry_control: { kind: 'button', name: '状态变更', element: 'changeStatusBtn' },
+      row_target: { control: 'button', column: '取消' },
+      execution_chain: ['list', 'query', 'select_header_row', 'open_dropdown', 'click_menu_item'],
+    } as never);
+    const steps = kinds(compileMetaOpsAndFlows(base, { force: true }), 'st');
+    const tail = steps.slice(-2);
+    assert.equal(tail[0]!.element, 'changeStatusBtn');
+    assert.equal(tail[1]!.element, 'dropdownMenuItem');
+    assert.equal(tail[1]!.kind, 'click_expect_api');
+    assert.equal((tail[1]!.args as { text?: string }).text, '取消');
+  });
+
+  it('行内 Lov：先点单元格，再 pick_lov 且用行内触发器', () => {
+    const base = art();
+    base.operations!.push({
+      id: 'loc',
+      name: '改库位',
+      type: 'update',
+      page_id: 'list',
+      row_target: { control: 'lov', column: 'locator', element: 'locatorLovIcon', cell_element: 'locatorCell' },
+      execution_chain: ['list', 'query', 'click_header_row', 'edit', 'edit_cell', 'pick_lov'],
+    } as never);
+    const steps = kinds(compileMetaOpsAndFlows(base, { force: true }), 'loc');
+    const tail = steps.slice(-2);
+    assert.equal(tail[0]!.element, 'locatorCell');
+    assert.equal(tail[1]!.kind, 'pick_lov');
+    assert.equal(tail[1]!.element, 'locatorLovIcon');
+    assert.deepEqual(tail[1]!.args, { open: 'locatorLovIcon' });
+  });
+
+  it('external 目标页：在来源页点边上的控件，而不是 goto 外部页', () => {
+    const steps = kinds(compileMetaOpsAndFlows(art(), { force: true }), 'po');
+    assert.ok(steps.every((s) => s.page_id === 'list'));
+    assert.equal(steps[steps.length - 1]!.element, 'poLink');
+  });
+});
+
+describe('模型直出 steps', () => {
+  const mk = (steps: unknown[], extra: Partial<FeatureArtifact> = {}) =>
+    baseArtifact({
+      apis: ['/v1/{tenantId}/x/save'],
+      operations: [
+        {
+          id: 'op1',
+          name: '保存',
+          type: 'update',
+          page_id: 'config',
+          steps,
+        } as never,
+      ],
+      ...extra,
+    });
+  const good = [
+    { kind: 'goto', name: '进入', page_id: 'config' },
+    { kind: 'click', name: '编辑', page_id: 'config', element: 'editBtn' },
+    { kind: 'click_expect_api', name: '保存', element: 'saveBtn', api: '/v1/{tenantId}/x/save' },
+  ];
+  const known = ['editBtn', 'saveBtn'];
+
+  it('校验通过 → 采用模型步骤，api 断言带 urlIncludes', () => {
+    const a = compileMetaOpsAndFlows(mk(good), { force: true, knownElements: known });
+    assert.equal(a.operations[0]!.step_source, 'llm_steps');
+    const last = a.meta_ops!.find((m) => m.id === 'op1_s3')!;
+    assert.equal(last.kind, 'click_expect_api');
+    assert.deepEqual(last.args, { urlIncludes: '/v1/{tenantId}/x/save' });
+    assert.equal(a.meta_ops!.find((m) => m.id === 'goto_config')!.args?.path, '/tarzan/problem-field-config');
+  });
+
+  it('未知 kind / 未定义元素 / 编造接口 / 首步非 goto → 回退模板并写入 risks', () => {
+    const bad = [
+      { kind: 'click', name: '点', element: 'ghostBtn' },
+      { kind: 'teleport', name: '飞' },
+      { kind: 'click_expect_api', name: '存', element: 'saveBtn', api: '/v1/made/up' },
+    ];
+    const a = compileMetaOpsAndFlows(
+      mk(bad, { review_suggestions: { status: 'pending_human_review', confidence: 0.5, risks: [] } as never }),
+      { force: true, knownElements: known },
+    );
+    assert.equal(a.operations[0]!.step_source, 'template');
+    const risks = a.review_suggestions!.risks!.join('\n');
+    assert.match(risks, /ghostBtn/);
+    assert.match(risks, /teleport/);
+    assert.match(risks, /made\/up/);
+    assert.match(risks, /第一步必须是 goto/);
+  });
+
+  it('不传 knownElements 时跳过元素定义检查', () => {
+    const a = compileMetaOpsAndFlows(
+      mk([{ kind: 'goto', name: '进入', page_id: 'config' }, { kind: 'click', name: '点', element: 'anything' }]),
+      { force: true },
+    );
+    assert.equal(a.operations[0]!.step_source, 'llm_steps');
+  });
+
+  it('goto 带路径参数的页面被拒绝', () => {
+    const a = compileMetaOpsAndFlows(
+      mk([{ kind: 'goto', name: '进详情', page_id: 'd' }], {
+        pages: [
+          { id: 'config', name: '列表', route: '/a/list', scope: 'in_feature' },
+          { id: 'd', name: '详情', route: '/a/detail/:id', scope: 'in_feature' },
+        ],
+      }),
+      { force: true },
+    );
+    assert.equal(a.operations[0]!.step_source, 'template');
+  });
+
+  it('requires → meta_op.args.skipIfMissing；未定义的 requires 被拒绝', () => {
+    const steps = [
+      { kind: 'goto', name: '进入', page_id: 'config' },
+      { kind: 'click', name: '点列链接', element: 'editBtn', requires: 'colHeader' },
+    ];
+    const ok = compileMetaOpsAndFlows(mk(steps), { force: true, knownElements: ['editBtn', 'colHeader'] });
+    assert.equal(ok.operations[0]!.step_source, 'llm_steps');
+    assert.equal(ok.meta_ops!.find((m) => m.id === 'op1_s2')!.args?.skipIfMissing, 'colHeader');
+    const bad = compileMetaOpsAndFlows(mk(steps), { force: true, knownElements: ['editBtn'] });
+    assert.equal(bad.operations[0]!.step_source, 'template');
+  });
+});

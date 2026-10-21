@@ -41,6 +41,20 @@ if (!caseFile || !fs.existsSync(caseFile)) {
           vars: {},
         };
 
+        // 依赖可个性化内容（如被隐藏的列）：缺失则整条用例跳过并写明原因，不当作功能失败
+        for (const step of c.steps) {
+          if (!step.skipIfMissing) continue;
+          const found = await ctx
+            .el(step.skipIfMissing)
+            .first()
+            .waitFor({ state: 'attached', timeout: 15_000 })
+            .then(() => true)
+            .catch(() => false);
+          if (!found) {
+            test.skip(true, `跳过：步骤「${step.name}」依赖的元素 ${step.skipIfMissing} 不存在（可能被当前账号的列个性化隐藏）`);
+          }
+        }
+
         for (const step of c.steps) {
           await test.step(step.name, async () => {
             const handler = actions[step.action];

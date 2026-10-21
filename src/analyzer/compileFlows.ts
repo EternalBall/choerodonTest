@@ -15,6 +15,8 @@ import type {
   PageNode,
 } from '../core/schema.js';
 
+import { collectKnownElements, validateOperationSteps, type ValidatedStep } from './validateSteps.js';
+
 type Operation = FeatureArtifact['operations'][number];
 
 /** 开放词 → 规范 token（用于吃掉 LLM 残留 chain） */
@@ -36,7 +38,16 @@ const TOKEN_SYNONYMS: Record<string, string> = {
   toggle_switch: 'toggle',
   switch: 'toggle',
   click_init: 'init',
-  confirm_modal: 'confirm',
+  modal_confirm: 'confirm_modal',
+  confirm_dialog: 'confirm_modal',
+  expand_dropdown: 'open_dropdown',
+  click_dropdown: 'open_dropdown',
+  select_menu_item: 'click_menu_item',
+  click_menu: 'click_menu_item',
+  activate_cell: 'edit_cell',
+  click_cell: 'edit_cell',
+  save_in_drawer: 'drawer_save',
+  drawer_ok: 'drawer_save',
   popconfirm: 'confirm',
   assert_tree_rows: 'assert_rows',
   assert_table_rows: 'assert_rows',
@@ -45,7 +56,35 @@ const TOKEN_SYNONYMS: Record<string, string> = {
   query_success: 'query',
   enter_detail: 'detail',
   open_detail: 'detail',
+  // 头行联动表 / 抽屉
+  select_header_row: 'click_header_row',
+  click_head_row: 'click_header_row',
+  select_line_rows: 'select_line_row',
+  check_line_row: 'select_line_row',
+  select_created_rows: 'select_created_row',
+  open_modal: 'open_drawer',
+  open_created_drawer: 'open_drawer',
+  assert_line_rows: 'assert_lines',
 };
+
+/**
+ * 头行联动表 / 抽屉类动作 token：出现任一即视为「头行联动」操作，
+ * 改按 execution_chain 顺序逐 token 编译（模板按 type 的固定步骤不含这些前置）。
+ */
+const MASTER_DETAIL_TOKENS = new Set([
+  'click_header_row',
+  'select_line_row',
+  'select_created_row',
+  'assert_lines',
+  'open_drawer',
+  'open_executed_drawer',
+  'open_scanned_drawer',
+  'open_dropdown',
+  'click_menu_item',
+  'edit_cell',
+  'confirm_modal',
+  'drawer_save',
+]);
 
 const ACTION_TOKENS = new Set([
   'query',
@@ -64,6 +103,7 @@ const ACTION_TOKENS = new Set([
   'remove_line',
   'init',
 ]);
+MASTER_DETAIL_TOKENS.forEach((t) => ACTION_TOKENS.add(t));
 
 export function normalizeChainToken(raw: string, pageIds: Set<string>): string | null {
   const t = String(raw || '')
@@ -340,6 +380,58 @@ function draftFromActionToken(
         name: '选择 Lov',
         kind: 'pick_lov',
         page_id: pageId,
+        // 行内 Lov：触发器为 row_target 的 element（先点格子出现 .c7n-pro-table-editor，再点搜索图标）
+        element: op.row_target?.control === 'lov' ? op.row_target.element : undefined,
+        args: op.row_target?.control === 'lov' && op.row_target.element ? { open: op.row_target.element } : undefined,
+      };
+    case 'open_dropdown':
+      return {
+        id: `open_dropdown_${op.id}`,
+        name: op.entry_control?.name ? `点击${op.entry_control.name}` : '展开下拉',
+        kind: 'click',
+        page_id: pageId,
+        element: entryElement(op) || 'dropdownTrigger',
+        note: 'Dropdown 触发器；菜单挂在 body，之后点 dropdownMenuItem',
+      };
+    case 'click_menu_item':
+      return {
+        id: `click_menu_item_${op.id}`,
+        name: op.row_target?.column || op.name,
+        kind: op.api ? 'click_expect_api' : 'click',
+        page_id: pageId,
+        element: 'dropdownMenuItem',
+        api: op.api,
+        args: { ...(op.api ? { urlIncludes: op.api } : {}), text: op.row_target?.column || op.name },
+        note: '菜单项按文本匹配（.c7n-dropdown-menu-item）',
+      };
+    case 'edit_cell':
+      return {
+        id: `edit_cell_${op.id}`,
+        name: '激活可编辑单元格',
+        kind: 'click',
+        page_id: pageId,
+        element: op.row_target?.cell_element || 'tableEditableRequiredCell',
+        note: '行内编辑器点格才出现',
+      };
+    case 'confirm_modal':
+      return {
+        id: `confirm_modal_${op.id}`,
+        name: '确认（Modal.confirm）',
+        kind: 'click',
+        page_id: pageId,
+        element: 'confirmModalOk',
+        note: 'Modal.confirm 的确定；区别于 Popconfirm 的 confirmBtn',
+      };
+    case 'drawer_save':
+      return {
+        id: `drawer_save_${op.id}`,
+        name: '保存（抽屉内容区）',
+        kind: op.api ? 'click_expect_api' : 'click',
+        page_id: pageId,
+        element: 'drawerBodySaveBtn',
+        api: op.api,
+        args: op.api ? { urlIncludes: op.api } : undefined,
+        note: '抽屉 okButton=false，保存在内容区(drawerBody)，非 footer 的 drawerConfirm',
       };
     case 'add_line':
       return {
@@ -357,6 +449,65 @@ function draftFromActionToken(
         page_id: pageId,
         element: 'removeLineBtn',
       };
+    case 'click_header_row':
+      return {
+        id: `click_header_row_${pageId}`,
+        name: '点击头表行',
+        kind: 'click',
+        page_id: pageId,
+        element: 'headerRow',
+        note: '头行联动：点头行后行表才加载',
+      };
+    case 'assert_lines':
+      return {
+        id: `assert_lines_${pageId}`,
+        name: '断言行表有数据',
+        kind: 'assert_table_rows',
+        page_id: pageId,
+        args: { table: 'lineTable' },
+      };
+    case 'select_line_row':
+      return {
+        id: `select_line_row_${pageId}`,
+        name: '勾选行表数据行',
+        kind: 'click',
+        page_id: pageId,
+        element: 'lineRowCheckbox',
+      };
+    case 'select_created_row':
+      return {
+        id: `select_created_row_${op.id}`,
+        name: '勾选已创建行',
+        kind: 'click',
+        page_id: pageId,
+        element: 'createdRowCheckbox',
+      };
+    case 'open_drawer':
+      return {
+        id: `open_drawer_${op.id}`,
+        name: op.type === 'create' && op.entry_control?.name ? `点击${op.entry_control.name}` : '打开抽屉',
+        kind: 'click',
+        page_id: pageId,
+        // 仅「创建」类操作的入口按钮就是开抽屉的按钮；其它操作（删除/接收等）在已打开的抽屉里做事，
+        // 抽屉入口统一用 drawerOpenBtn，避免误用本操作自身的控件
+        element: op.type === 'create' ? entryElement(op) || 'drawerOpenBtn' : 'drawerOpenBtn',
+      };
+    case 'open_executed_drawer':
+      return {
+        id: `open_executed_drawer_${pageId}`,
+        name: '打开执行明细抽屉',
+        kind: 'click',
+        page_id: pageId,
+        element: 'executedDrawerLink',
+      };
+    case 'open_scanned_drawer':
+      return {
+        id: `open_scanned_drawer_${pageId}`,
+        name: '打开扫描明细抽屉',
+        kind: 'click',
+        page_id: pageId,
+        element: 'scannedDrawerLink',
+      };
     case 'init':
       return {
         id: `click_init_${op.id}`,
@@ -369,6 +520,84 @@ function draftFromActionToken(
     default:
       return null;
   }
+}
+
+/** execution_chain 是否含头行联动 / 抽屉 token */
+function hasMasterDetailTokens(op: Operation, pageIds: Set<string>): boolean {
+  return normalizeExecutionChain(op.execution_chain, pageIds).some((t) =>
+    MASTER_DETAIL_TOKENS.has(t),
+  );
+}
+
+/**
+ * 头行联动操作：按 execution_chain 顺序逐 token 编译。
+ * - 页面 id → 导航；已知动作 token → 对应步骤；
+ * - 未知蛇形 token（如 sign_confirm、receive）视为终端动作，带 op.api 时用 click_expect_api。
+ * 动机：type 模板（如 create 的「点新建→填表→保存」）不含「点头行/勾选行/开抽屉」，
+ * 套用会生成点不到的步骤。
+ */
+function masterDetailSteps(
+  op: Operation,
+  pages: PageNode[],
+  pageIds: Set<string>,
+  edges: PageEdge[],
+  entryRoute?: string,
+): DraftStep[] {
+  const pageId = pageIdOf(op, pages, entryRoute);
+  const steps: DraftStep[] = [];
+  const push = (d: DraftStep) => {
+    if (!steps.some((s) => s.id === d.id)) steps.push(d);
+  };
+  // external 目标页（如 po_link）的入口在来源页：先到来源页再点边上的控件
+  const inEdge = op.scope === 'external' ? edges.find((e) => e.to_page === pageId) : undefined;
+  const basePage = inEdge ? inEdge.from_page : pageId;
+  gotoStepsFor(basePage, pages, edges, op, entryRoute).forEach(push);
+
+  let terminal = false;
+  let inDrawer = false;
+  for (const rawTok of normalizeExecutionChain(op.execution_chain, pageIds)) {
+    if (pageIds.has(rawTok)) continue; // 页面 token 已由导航覆盖
+    if (rawTok === 'cancel') continue;
+    if (rawTok === 'open_drawer') inDrawer = true;
+    // 抽屉里的保存按钮在内容区（okButton=false），不是 footer 的 drawerConfirm
+    const tok = inDrawer && rawTok === 'save' ? 'drawer_save' : rawTok;
+    const d = draftFromActionToken(tok, op, basePage);
+    if (d) {
+      push(d);
+      if (tok === 'save' || tok === 'delete' || tok === 'drawer_save' || tok === 'click_menu_item') terminal = true;
+      continue;
+    }
+    // 未知蛇形 token → 终端动作
+    if (!terminal) {
+      push({
+        id: `action_${op.id}`,
+        name: op.name,
+        kind: op.api ? 'click_expect_api' : 'click',
+        page_id: basePage,
+        element: inEdge?.control?.element || entryElement(op),
+        api: op.api,
+        args: op.api ? { urlIncludes: op.api } : undefined,
+        note: op.description,
+      });
+      terminal = true;
+    }
+  }
+  // 终端动作后还有确认弹窗（Modal.confirm/Popconfirm）时，接口是在确认之后才发出：
+  // 把 click_expect_api 从动作按钮挪到确认按钮上
+  const actIdx = steps.findIndex((s) => s.id === `action_${op.id}`);
+  const cfmIdx = steps.findIndex((s, i) => i > actIdx && (s.id === `confirm_${op.id}` || s.id === `confirm_modal_${op.id}`),
+  );
+  if (actIdx >= 0 && cfmIdx > actIdx && steps[actIdx]!.api) {
+    const act = steps[actIdx]!;
+    steps[cfmIdx] = {
+      ...steps[cfmIdx]!,
+      kind: 'click_expect_api',
+      api: act.api,
+      args: { urlIncludes: act.api },
+    };
+    steps[actIdx] = { ...act, kind: 'click', api: undefined, args: undefined };
+  }
+  return steps;
 }
 
 /** 按 operation.type 生成规范步骤草案（不依赖 LLM chain） */
@@ -409,6 +638,10 @@ function templateStepsForOp(
     }
     const fromTok = draftFromActionToken(tok, op, pageId);
     if (fromTok) push(fromTok);
+  }
+
+  if (hasMasterDetailTokens(op, pageIds)) {
+    return masterDetailSteps(op, pages, pageIds, edges, entryRoute);
   }
 
   switch (op.type) {
@@ -727,6 +960,20 @@ function isRowEditDelete(op: Operation, hasRowGate: boolean): boolean {
   );
 }
 
+/** 模型步骤 → DraftStep；goto/filter_query 按页去重复用，其余按操作隔离 */
+function llmDraft(op: Operation, s: ValidatedStep, i: number): DraftStep {
+  const id =
+    s.kind === 'goto' || s.kind === 'filter_query'
+      ? `${s.kind}_${s.page_id ?? 'main'}`
+      : `${op.id}_s${i + 1}`;
+  let args =
+    s.kind === 'click_expect_api' && s.api ? { urlIncludes: s.api, ...(s.args ?? {}) } : s.args;
+  // pickLov 关键词用 args.open 指向 Lov 搜索图标；模型只写 element 时补上
+  if (s.kind === 'pick_lov' && s.element && !args?.open) args = { ...(args ?? {}), open: s.element };
+  if (s.requires) args = { ...(args ?? {}), skipIfMissing: s.requires };
+  return { id, name: s.name, kind: s.kind, page_id: s.page_id, element: s.element, api: s.api, args, note: s.note };
+}
+
 function stepsToFlow(op: Operation, metaIds: string[]): Flow {
   const nodes: FlowNode[] = metaIds.map((meta_op_id, i) => ({
     id: `${op.id}_n${i}`,
@@ -755,7 +1002,7 @@ function stepsToFlow(op: Operation, metaIds: string[]): Flow {
  */
 export function compileMetaOpsAndFlows(
   artifact: FeatureArtifact,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; knownElements?: Iterable<string> },
 ): FeatureArtifact {
   if (artifact.flows?.length && artifact.meta_ops?.length && !opts?.force) {
     return artifact;
@@ -768,25 +1015,48 @@ export function compileMetaOpsAndFlows(
   const flows: Flow[] = [];
   // 同页存在 row_gate 说明有「仅未落库行可操作」的行级门禁，供 delete 判定行编辑模式
   const hasRowGate = (artifact.field_rules ?? []).some((r) => Boolean(r.row_gate));
+  const known = opts?.knownElements ? collectKnownElements(artifact, opts.knownElements) : undefined;
+  const stepIssues: string[] = [];
   const operations = (artifact.operations ?? []).map((op) => {
-    const drafts = templateStepsForOp(
-      op,
-      pages,
-      pageIds,
-      entryRoute,
-      hasRowGate,
-      artifact.page_edges ?? [],
-    );
+    let drafts: DraftStep[] | undefined;
+    let stepSource: 'llm_steps' | 'template' = 'template';
+    if (op.steps?.length) {
+      const v = validateOperationSteps(op, artifact, known);
+      if (v.ok) {
+        drafts = v.steps.map((s, i) =>
+          s.kind === 'goto' ? draftGoto(s.page_id!, pages, op, entryRoute) : llmDraft(op, s, i),
+        );
+        stepSource = 'llm_steps';
+      } else {
+        for (const it of v.issues) {
+          stepIssues.push(`${it.op}${it.step != null ? `#${it.step + 1}` : ''}: ${it.message}`);
+        }
+      }
+    }
+    drafts ??= templateStepsForOp(op, pages, pageIds, entryRoute, hasRowGate, artifact.page_edges ?? []);
     const metaIds = drafts.map((d) => ensureMeta(metaMap, d));
     flows.push(stepsToFlow(op, metaIds));
     return {
       ...op,
+      step_source: stepSource,
       execution_chain: metaIds,
     };
   });
+  const rs = artifact.review_suggestions;
+  const review_suggestions =
+    stepIssues.length && rs
+      ? {
+          ...rs,
+          risks: [
+            ...(rs.risks ?? []).filter((r) => !r.startsWith('模型步骤校验未通过')),
+            ...stepIssues.map((m) => `模型步骤校验未通过，已回退规则模板 → ${m}`),
+          ],
+        }
+      : rs;
 
   return {
     ...artifact,
+    ...(review_suggestions ? { review_suggestions } : {}),
     operations,
     meta_ops: [...metaMap.values()],
     flows,
