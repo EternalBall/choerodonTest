@@ -581,7 +581,8 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
         });
         return region;
       }
-      mk(ctx, n, region, { locator_status: 'unbound' });
+      const hint = [n.props.placeholder, n.props.label].find((v) => typeof v === 'string' && !v.startsWith('{')) as string | undefined;
+      mk(ctx, n, region, { locator_status: 'unbound', ...(hint ? { suggest: { name: hint } } : {}) });
       return region;
     }
     if (ctl === 'lov') {
