@@ -279,3 +279,36 @@ const P = () => (<div><Button icon="add" /><Button icon="add" /></div>);`;
     assert.equal(r.gaps.filter((g) => g.cause === 'dup_icon_button').length, 2);
   });
 });
+
+describe('同文案按钮：互斥分支与弹窗作用域', () => {
+  const run = (jsx: string) =>
+    bindPage(
+      { entry: 'a', files: [pruneJsxSource(`import { Button, Modal } from 'choerodon-ui/pro';\\nconst P = () => (<div>${jsx}</div>);`, 'a/index.tsx')], followed: [] },
+      't',
+      'feat_t',
+    );
+  it('三元的 T / F 分支里的同名按钮互斥，不算冲突', () => {
+    const r = run('{edit ? <Button onClick={a}>保存</Button> : <Button onClick={b}>保存</Button>}');
+    assert.ok(!r.gaps.some((g) => g.cause === 'dup_button_text'));
+    assert.ok(r.locators.btnA && r.locators.btnB);
+  });
+  it('`a && X` 与 `!a && Y` 互斥', () => {
+    const r = run('{edit && <Button onClick={a}>保存</Button>}{!edit && <Button onClick={b}>保存</Button>}');
+    assert.ok(!r.gaps.some((g) => g.cause === 'dup_button_text'));
+  });
+  it('两个独立 && 里的同名按钮仍算冲突（无法证明互斥）', () => {
+    const r = run('{x && <Button>保存</Button>}{y && <Button>保存</Button>}');
+    assert.equal(r.gaps.filter((g) => g.cause === 'dup_button_text').length, 2);
+  });
+  it('主树按钮与 Modal.open 里的同名按钮：主树用普通键，弹窗里的限定到 kit modal', () => {
+    const src = `import { Button, Modal } from 'choerodon-ui/pro';
+const open = () => Modal.open({ title: 't', children: <div><Button onClick={doOk}>确定</Button></div> });
+const P = () => (<div><Button onClick={onOk}>确定</Button></div>);`;
+    const r = bindPage({ entry: 'a', files: [pruneJsxSource(src, 'a/index.tsx')], followed: [] }, 't', 'feat_t');
+    assert.equal(r.locators.btnOk.name, '确定');
+    assert.equal(r.locators.btnOk.within, undefined);
+    assert.equal(r.locators.btnDoOkInModal.within, 'feat_t.modal');
+    assert.equal(r.locators.modal.kit, 'modal');
+    assert.ok(!r.gaps.some((g) => g.cause === 'dup_button_text'));
+  });
+});

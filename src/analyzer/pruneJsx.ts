@@ -19,6 +19,8 @@ export type PrunedNode = {
   line: number;
   /** 渲染取决于运行时（条件 / 循环产出）：DOM 顺序与出现与否不可由源码确定 */
   conditional?: boolean;
+  /** 所处的三元分支路径（'<位置>:T' / ':F'）：同一三元的 T 与 F 互斥，运行时至多渲染其一 */
+  branch?: string[];
   children: PrunedNode[];
   /** custom 且已跟进展开时的来源文件（相对仓库根） */
   followedFrom?: string;
@@ -172,11 +174,12 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
 
   const jsxChildrenOfExpr = (e: ts.Node, acc: PrunedNode[]) => {
     // 条件 / 逻辑与 / map 回调 里的 JSX
-    const visit = (n: ts.Node, cond = false) => {
+    const visit = (n: ts.Node, cond = false, branches: string[] = []) => {
       if (ts.isJsxElement(n) || ts.isJsxSelfClosingElement(n) || ts.isJsxFragment(n)) {
         const got = convert(n);
         // 经过三元 / && / || / ?? / 函数调用（如 map）才到达的 JSX 是否渲染取决于运行时
         if (cond) for (const g of got) g.conditional = true;
+        if (branches.length) for (const g of got) g.branch = branches;
         acc.push(...got);
         return;
       }
@@ -194,7 +197,22 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
         probe(n);
         if (hasJsx) out.stats.mapJsx++;
       }
-      ts.forEachChild(n, (c) => visit(c, cond || dyn));
+      // `a && <X/>` 与 `!a && <Y/>`：同一条件文本的正反两侧互斥
+      if (ts.isBinaryExpression(n) && n.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+        const lt = n.left.getText(sf).replace(/\s+/g, '');
+        const neg = lt.startsWith('!') && !lt.startsWith('!!');
+        const id = `cx${(neg ? lt.slice(1) : lt).replace(/:/g, '_')}`;
+        visit(n.left, cond, branches);
+        visit(n.right, true, [...branches, `${id}:${neg ? 'F' : 'T'}`]);
+        return;
+      }
+      if (ts.isConditionalExpression(n)) {
+        visit(n.condition, cond, branches);
+        visit(n.whenTrue, true, [...branches, `${n.pos}:T`]);
+        visit(n.whenFalse, true, [...branches, `${n.pos}:F`]);
+        return;
+      }
+      ts.forEachChild(n, (c) => visit(c, cond || dyn, branches));
     };
     visit(e);
   };
@@ -358,7 +376,7 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
         while (up) {
           if (ts.isCallExpression(up) && /^(Modal|Drawer)\.\w+$|^(modal|drawer)\w*$/.test(up.expression.getText(sf))) {
             overlay = true;
-            rctx = 'modal';
+            rctx = /^(Drawer\.|drawer)/.test(up.expression.getText(sf)) ? 'drawer' : 'modal';
             break;
           }
           // 回调属性里的 JSX（renderer / editor / expandedRowRenderer / 任意 JSX 属性）：随行/随需渲染，不在主树里
@@ -368,6 +386,15 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
           ) {
             overlay = true;
             rctx = ts.isJsxAttribute(up) ? 'jsxattr' : (up as ts.PropertyAssignment).name.getText(sf);
+            // Modal.open({ children / footer / title: <JSX/> })：属性只是弹窗配置，真正的上下文是弹窗
+            if (/^(children|footer|title)$/.test(rctx)) {
+              for (let a: ts.Node | undefined = up.parent; a; a = a.parent) {
+                if (ts.isCallExpression(a) && /^(Modal|Drawer)\.\w+$|^(modal|drawer)\w*$/.test(a.expression.getText(sf))) {
+                  rctx = /^(Drawer\.|drawer)/.test(a.expression.getText(sf)) ? 'drawer' : 'modal';
+                  break;
+                }
+              }
+            }
             break;
           }
           up = up.parent;

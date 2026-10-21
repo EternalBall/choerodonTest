@@ -130,6 +130,11 @@ type Ctx = {
   rootCtx: string;
   /** 图标按钮按「作用域|图标名」计数，判多实例 */
   iconCounts: Map<string, number>;
+  /** 当前节点祖先累计的三元分支路径 */
+  branchPath: string[];
+  /** 同文案按钮的出现信息（节点对象 → 信息），用于判断重复是否真的冲突 */
+  btnOcc: Map<string, BtnOcc[]>;
+  btnOccOf: WeakMap<PrunedNode, BtnOcc>;
   followedTags: Set<string>;
   libAliases: Record<string, string>;
   /** 列数组变量名 → 表格语义键（<Table columns={x} dataSet={yDS}> 预扫得到） */
@@ -156,6 +161,8 @@ function addLocator(ctx: Ctx, key: string, def: LocatorDef): boolean {
  * 确定性预绑定：c7n 组件 + 字面量 props → kit key / 字段 locator。
  * 只做有把握的；其余留给 LLM（unbound / needs_kit）。不编造 css。
  */
+type BtnOcc = { node: PrunedNode; ctxName: string; overlay: boolean; branches: string[] };
+
 export type BindOptions = {
   /** 库别名前缀 → 包名（loadLibAliases），用于识别 hzero/hcm 库组件 */
   libAliases?: Record<string, string>;
@@ -183,6 +190,9 @@ export function bindPage(page: PrunedPage, feature: string, slug: string, bopts:
       btnTexts: new Map(),
       rootCtx: '',
       iconCounts: new Map(),
+      branchPath: [],
+      btnOcc: new Map(),
+      btnOccOf: new WeakMap(),
       overlay: false,
       libAliases: bopts.libAliases ?? {},
       overlayTableKeys,
@@ -233,16 +243,21 @@ export function bindPage(page: PrunedPage, feature: string, slug: string, bopts:
     };
     scanTables(f.roots);
 
-    // 记录同文案按钮出现次数（判多实例）
-    const scanBtn = (ns: PrunedNode[]) => {
+    // 记录同文案按钮出现信息（判多实例是否真冲突）
+    const scanBtn = (ns: PrunedNode[], ov: boolean, rc: string, path: string[]) => {
       for (const n of ns) {
+        const pth = n.branch ? [...path, ...n.branch] : path;
         if (n.kind === 'c7n' && /Button$/.test(n.tag) && n.text) {
+          const occ: BtnOcc = { node: n, ctxName: rc, overlay: ov, branches: pth };
+          ctx.btnOcc.set(n.text, [...(ctx.btnOcc.get(n.text) ?? []), occ]);
+          ctx.btnOccOf.set(n, occ);
           ctx.btnTexts.set(n.text, [...(ctx.btnTexts.get(n.text) ?? []), String(n.line)]);
         }
-        scanBtn(n.children);
+        scanBtn(n.children, ov, rc, pth);
       }
     };
-    scanBtn(f.roots);
+    f.roots.forEach((r, i) => scanBtn([r], !!f.rootOverlay[i], f.rootCtx[i] ?? '', []));
+
     // 图标按钮（无文案、icon 为字面量）按作用域计数
     f.roots.forEach((r, i) => {
       const walk = (ns: PrunedNode[]) => {
@@ -263,6 +278,7 @@ export function bindPage(page: PrunedPage, feature: string, slug: string, bopts:
     f.roots.forEach((r, i) => {
       ctx.overlay = !!f.rootOverlay[i];
       ctx.rootCtx = f.rootCtx[i] ?? '';
+      ctx.branchPath = [];
       visit(ctx, r, undefined);
     });
 
@@ -325,7 +341,9 @@ function mk(ctx: Ctx, n: PrunedNode, region: string | undefined, extra: Partial<
 
 function visit(ctx: Ctx, n: PrunedNode, region: string | undefined, cond = false): void {
   const saved = ctx.cond;
+  const savedBranch = ctx.branchPath;
   ctx.cond = cond || !!n.conditional;
+  if (n.branch) ctx.branchPath = [...ctx.branchPath, ...n.branch];
   let childRegion = region;
   let overlayChildren = false;
   const ev = `${ctx.file.file}:${n.line}`;
@@ -384,6 +402,7 @@ function visit(ctx: Ctx, n: PrunedNode, region: string | undefined, cond = false
   for (const c of n.children) visit(ctx, c, childRegion, ctx.cond);
   ctx.overlay = savedOverlay;
   ctx.cond = saved;
+  ctx.branchPath = savedBranch;
 }
 
 function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string): string | undefined {
@@ -462,7 +481,16 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
     }
     const handler = ident(n.props.onClick);
     const key = handler ? `btn${cap(handler.replace(/^handle|^on/, ''))}` : buttonKeyFromText(n.text);
-    const dup = (ctx.btnTexts.get(n.text) ?? []).length > 1;
+    const occ = ctx.btnOccOf.get(n);
+    const others = (ctx.btnOcc.get(n.text) ?? []).filter((o) => o !== occ);
+    // 三元的 T / F 分支互斥：运行时至多渲染其一，不构成冲突
+    const exclusive = (o: BtnOcc) =>
+      ctx.branchPath.some((b) => o.branches.some((c) => b.split(':')[0] === c.split(':')[0] && b !== c));
+    const isModal = ctx.rootCtx === 'modal';
+    // 主树按钮不与弹窗里的同名按钮冲突（弹窗里的那个会另外限定到弹窗）；弹窗里的只与弹窗里的同名按钮比较
+    const conflicts = others.filter((o) => !exclusive(o) && (isModal ? o.ctxName === 'modal' : o.ctxName !== 'modal'));
+    const dup = conflicts.length > 0;
+    const scopedToModal = !!key && isModal && !dup && others.some((o) => o.ctxName !== 'modal' && !exclusive(o));
     if (!key || dup) {
       const node = mk(ctx, n, region, {
         locator_status: 'unbound',
@@ -472,11 +500,24 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
         ctx.gaps.push({
           type: 'ambiguous_multi_instance',
           node_id: node.id,
-          detail: `文案「${n.text}」的按钮在本文件出现 ${ctx.btnTexts.get(n.text)!.length} 次，需 within/region 区分`,
+          detail: `文案「${n.text}」的按钮在本文件出现 ${conflicts.length + 1} 次且无法由三元分支或弹窗作用域区分，需 within/region`,
           suggested_action: 'probe_dom',
           cause: 'dup_button_text',
         });
       }
+      return region;
+    }
+    if (scopedToModal) {
+      addLocator(ctx, 'modal', { kit: 'modal', evidence: ev, status: 'proposed' });
+      const mk2 = `${key}InModal`;
+      addLocator(ctx, mk2, {
+        role: 'button',
+        name: n.text,
+        within: `${ctx.slug}.modal`,
+        evidence: `${ev}（Modal.open 内，页面上另有同名按钮，限定到弹窗；弹窗容器取 kit modal，未核实该弹窗是否为居中弹层）`,
+        status: 'needs_review',
+      });
+      mk(ctx, n, region, { locator_key: mk2, locator_status: 'bound' });
       return region;
     }
     addLocator(ctx, key, { role: 'button', name: n.text, evidence: ev, status: 'proposed' });
