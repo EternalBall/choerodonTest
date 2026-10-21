@@ -6,6 +6,7 @@ import { compileMetaOpsAndFlows } from './compileFlows.js';
 import { retrieveFeatureCode } from './retrieve.js';
 import { extractFieldFacts } from './staticExtract.js';
 import { llmAnalyzeFeature } from './llmAnalyze.js';
+import { locatePages, pickPageEntries } from './llmLocate.js';
 
 export type AnalyzeOptions = {
   feature: string;
@@ -29,6 +30,16 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
   });
   // 按源码 import 来源（choerodon-ui/pro vs choerodon-ui）按需选手册
   const playbooks = await loadPlaybooksForSources(snippets.map((s) => s.content));
+  // 页面 DOM 结构解析 + 定位绑定：产出 artifacts/<slug>/page-locators.yaml（元素草案并入元素库）
+  const entries = pickPageEntries(snippets);
+  const located = entries.length
+    ? await locatePages({
+        feature: opts.feature,
+        projectRoot: opts.projectRoot,
+        entries,
+        playbookIds: playbooks.map((p) => p.id),
+      })
+    : null;
   const raw = await llmAnalyzeFeature({
     feature: opts.feature,
     snippets,
@@ -38,8 +49,22 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
   const knownElements = [
     ...Object.keys(await loadPlatformKit()),
     ...Object.keys(await loadFeatureElementsOverlay(opts.feature)),
+    ...Object.keys(located?.result.elements_draft[located.result.slug] ?? {}),
   ];
   const artifact = compileMetaOpsAndFlows(raw, { force: true, knownElements });
+  if (located) {
+    const g = located.result.gaps;
+    const risks = [
+      ...g.map((x) => `页面定位缺口[${x.type}]${x.node_id ? ` ${x.node_id}` : ''}：${x.detail}（建议 ${x.suggested_action}）`),
+      ...located.violations.map((v) => `定位质量门禁#${v.gate}：${v.message}`),
+    ];
+    if (risks.length) {
+      artifact.review_suggestions = {
+        ...(artifact.review_suggestions ?? {}),
+        risks: [...(artifact.review_suggestions?.risks ?? []), ...risks],
+      } as typeof artifact.review_suggestions;
+    }
+  }
   // 字段事实由 AST 确定性提取，不让 LLM 参与，保证同源码两次分析结果一致
   artifact.field_facts = extractFieldFacts(snippets);
   logger.info(

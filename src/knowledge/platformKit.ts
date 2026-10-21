@@ -5,6 +5,7 @@ import { PATHS } from '../core/paths.js';
 import type { FeatureArtifact } from '../core/schema.js';
 import { logger } from '../core/logger.js';
 import { featureSlug } from './featureSlug.js';
+import { featureArtifactDir } from '../core/featurePaths.js';
 
 export type ElementMap = Record<string, Record<string, unknown>>;
 
@@ -63,6 +64,22 @@ function stripMeta(map: ElementMap): ElementMap {
 }
 
 /**
+ * 页面 DOM 解析产出的元素草案（artifacts/<slug>/page-locators.yaml 的 elements_draft.<slug>）。
+ * 命名空间层 = 功能 slug，键并入该功能的元素库；不存在则为空。
+ */
+export async function loadLocateDraft(feature: string): Promise<ElementMap[string]> {
+  try {
+    const file = path.join(featureArtifactDir(feature), 'page-locators.yaml');
+    const y = YAML.parse(await fs.readFile(file, 'utf8')) as {
+      elements_draft?: Record<string, Record<string, unknown>>;
+    };
+    return (y?.elements_draft?.[featureSlug(feature)] ?? {}) as ElementMap[string];
+  } catch {
+    return {};
+  }
+}
+
+/**
  * 合并：platform ← feature overlay ← field_rules ← hints（hints 不覆盖已有 css）
  */
 export async function buildFeatureElementLib(
@@ -72,6 +89,10 @@ export async function buildFeatureElementLib(
   const base = await loadPlatformKit();
   const overlay = await loadFeatureElementsOverlay(feature);
   const merged: ElementMap = { ...base, ...overlay };
+  // 页面 DOM 解析草案：只补充 kit / overlay 没有的 key，不覆盖已有定义
+  for (const [k, def] of Object.entries(await loadLocateDraft(feature))) {
+    if (!(k in merged)) merged[k] = def as Record<string, unknown>;
+  }
 
   if (artifact?.field_rules?.length) {
     for (const rule of artifact.field_rules) {
@@ -151,7 +172,7 @@ function guessNameFromHint(label: string | undefined, key: string): string {
   return key;
 }
 
-function cssForFieldRule(name: string, control?: string): string | undefined {
+export function cssForFieldRule(name: string, control?: string): string | undefined {
   if (!name || !/^[a-zA-Z]/.test(name)) return undefined;
   if (control === 'switch') {
     return `.page-content input.c7n-pro-switch[name="${name}"]`;
@@ -163,4 +184,9 @@ function cssForFieldRule(name: string, control?: string): string | undefined {
     return `.page-content input.c7n-pro-input-number[name="${name}"]`;
   }
   return `.page-content input.c7n-pro-input[name="${name}"]`;
+}
+
+/** Lov 的打开图标（*Open）定位：限定在含目标 input 的 select-wrapper 内 */
+export function lovOpenCss(name: string): string {
+  return `.page-content .c7n-pro-select-wrapper:has(input[name="${name}"]) .icon-search`;
 }
