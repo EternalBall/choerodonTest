@@ -126,6 +126,10 @@ type Ctx = {
   tableCount: number;
   tableIdx: number;
   btnTexts: Map<string, string[]>;
+  /** 当前根的上下文（pruneJsx.rootCtx） */
+  rootCtx: string;
+  /** 图标按钮按「作用域|图标名」计数，判多实例 */
+  iconCounts: Map<string, number>;
   followedTags: Set<string>;
   libAliases: Record<string, string>;
   /** 列数组变量名 → 表格语义键（<Table columns={x} dataSet={yDS}> 预扫得到） */
@@ -177,6 +181,8 @@ export function bindPage(page: PrunedPage, feature: string, slug: string, bopts:
       tableCount: 0,
       tableIdx: 0,
       btnTexts: new Map(),
+      rootCtx: '',
+      iconCounts: new Map(),
       overlay: false,
       libAliases: bopts.libAliases ?? {},
       overlayTableKeys,
@@ -237,9 +243,26 @@ export function bindPage(page: PrunedPage, feature: string, slug: string, bopts:
       }
     };
     scanBtn(f.roots);
+    // 图标按钮（无文案、icon 为字面量）按作用域计数
+    f.roots.forEach((r, i) => {
+      const walk = (ns: PrunedNode[]) => {
+        for (const n of ns) {
+          if (n.kind === 'c7n' && /Button$/.test(n.tag) && !n.text) {
+            const ic = literalIcon(n);
+            if (ic) {
+              const k = `${iconScope(f.rootCtx[i] ?? '')}|${ic}`;
+              ctx.iconCounts.set(k, (ctx.iconCounts.get(k) ?? 0) + 1);
+            }
+          }
+          walk(n.children);
+        }
+      };
+      walk([r]);
+    });
 
     f.roots.forEach((r, i) => {
       ctx.overlay = !!f.rootOverlay[i];
+      ctx.rootCtx = f.rootCtx[i] ?? '';
       visit(ctx, r, undefined);
     });
 
@@ -434,8 +457,8 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
 
   if (tag === 'Button' || tag === 'PermissionButton') {
     if (!n.text) {
-      mk(ctx, n, region, { locator_status: 'unbound' });
-      return region;
+      const ic = literalIcon(n);
+      return ic ? bindIconButton(ctx, n, ic, region, ev) : (mk(ctx, n, region, { locator_status: 'unbound' }), region);
     }
     const handler = ident(n.props.onClick);
     const key = handler ? `btn${cap(handler.replace(/^handle|^on/, ''))}` : buttonKeyFromText(n.text);
@@ -573,6 +596,57 @@ function bindColumnLinks(ctx: Ctx, n: PrunedNode, key: string, region: string | 
         locator_status: 'bound',
       });
     }
+  }
+  return region;
+}
+
+/** 图标按钮的字面量 icon（如 add / remove / edit-o），非字面量返回 undefined */
+function literalIcon(n: PrunedNode): string | undefined {
+  const v = n.props.icon;
+  return typeof v === 'string' && /^[a-z][\w-]*$/.test(v) ? v : undefined;
+}
+
+/** 根上下文 → 作用域：header=列头（thead），renderer/editor=行内（tbody 行），空=主树，其它=其它浮层/回调 */
+function iconScope(rootCtx: string): 'thead' | 'row' | 'main' | 'other' {
+  if (rootCtx === 'header') return 'thead';
+  if (rootCtx === 'renderer' || rootCtx === 'editor') return 'row';
+  return rootCtx === '' ? 'main' : 'other';
+}
+
+const camel = (s: string) => s.split('-').map(cap).join('');
+
+/**
+ * 图标按钮：c7n 图标按钮渲染为 button 内含 `.icon-<name>`，与 kit 的 tableAddLineBtn / tableRemoveLineBtn
+ * （button:has(.icon-add) / button:has(.icon-remove)）同一约定。add / remove 来自已核实的 kit 条目；
+ * 其它图标名按同一类名约定类推，标 needs_review。同作用域同图标出现多次则无法单凭 css 区分，记缺口。
+ */
+function bindIconButton(ctx: Ctx, n: PrunedNode, icon: string, region: string | undefined, ev: string): string | undefined {
+  const scope = iconScope(ctx.rootCtx);
+  const handler = ident(n.props.onClick);
+  const stem = handler ? cap(handler.replace(/^handle|^on/, '')) : `Icon${camel(icon)}`;
+  const key = scope === 'thead' ? `thead${stem}Btn` : scope === 'row' ? `row${stem}Btn` : `btn${stem}`;
+  const prefix = scope === 'thead' ? '.c7n-pro-table thead ' : scope === 'row' ? '.c7n-pro-table-tbody tr.c7n-pro-table-row ' : '';
+  const verified = icon === 'add' || icon === 'remove';
+  const dup = (ctx.iconCounts.get(`${scope}|${icon}`) ?? 0) > 1;
+  addLocator(ctx, key, {
+    css: `${prefix}button:has(.icon-${icon})`,
+    evidence: `${ev}（图标按钮 icon="${icon}"，无文案；${scope === 'row' ? '行内按钮按行重复，调用方需限定行；' : ''}${verified ? 'icon-add / icon-remove 约定见 kit' : '类名按 icon-<name> 约定类推，未在 UAT 核实'}）`,
+    status: verified && !dup && scope !== 'row' ? 'proposed' : 'needs_review',
+  });
+  const unsure = dup || scope === 'row' || scope === 'other';
+  const node = mk(ctx, n, region, { locator_key: key, locator_status: unsure ? 'needs_probe' : 'bound' });
+  if (unsure) {
+    ctx.gaps.push({
+      type: 'ambiguous_multi_instance',
+      node_id: node.id,
+      detail: dup
+        ? `同作用域（${scope}）内图标 ${icon} 的按钮出现多次，仅凭 css 无法区分`
+        : scope === 'row'
+          ? `行内按钮（图标 ${icon}）每行重复，需在用例里限定行`
+          : `位于回调/浮层（${ctx.rootCtx}）内的图标按钮，渲染时机不由主树决定`,
+      suggested_action: 'probe_dom',
+      cause: dup ? 'dup_icon_button' : scope === 'row' ? 'row_icon_button' : 'other_icon_button',
+    });
   }
   return region;
 }

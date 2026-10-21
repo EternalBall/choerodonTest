@@ -48,6 +48,8 @@ export type PrunedFile = {
   truncated: boolean;
   /** 根 JSX 是否位于 Modal.open / Modal.confirm 等调用参数内（弹窗内容，打开前不在 DOM） */
   rootOverlay: boolean[];
+  /** 与 rootOverlay 对应：根 JSX 所处的上下文（renderer / editor / header / footer … 属性名，modal，jsxattr；主树为空串） */
+  rootCtx: string[];
   /** rc-form 旧写法 getFieldDecorator('字段名')(<控件/>)：控件标签、行号与字段名 */
   decorated: { tag: string; line: number; name: string }[];
   /** 动态写法统计：JSX 展开属性 {...x} 个数、.map 回调内产出 JSX 的次数 */
@@ -120,7 +122,7 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
   /** 局部解构别名：const { Panel } = Collapse → Panel → Collapse */
   const aliases: Record<string, string> = {};
   const importNames: Record<string, string> = {};
-  const out: PrunedFile = { file, imports, importNames, roots: [], rootOverlay: [], decorated: [], columns: [], truncated: false, stats: { spreads: 0, mapJsx: 0 }, unresolved: [] };
+  const out: PrunedFile = { file, imports, importNames, roots: [], rootOverlay: [], rootCtx: [], decorated: [], columns: [], truncated: false, stats: { spreads: 0, mapJsx: 0 }, unresolved: [] };
   let nodeCount = 0;
 
   for (const st of sf.statements) {
@@ -352,9 +354,11 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
         out.roots.push(...convert(n));
         let up: ts.Node | undefined = n.parent;
         let overlay = false;
+        let rctx = '';
         while (up) {
           if (ts.isCallExpression(up) && /^(Modal|Drawer)\.\w+$|^(modal|drawer)\w*$/.test(up.expression.getText(sf))) {
             overlay = true;
+            rctx = 'modal';
             break;
           }
           // 回调属性里的 JSX（renderer / editor / expandedRowRenderer / 任意 JSX 属性）：随行/随需渲染，不在主树里
@@ -363,11 +367,15 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
             (ts.isPropertyAssignment(up) && /^(renderer|editor|expandedRowRenderer|header|footer|title|children)$/.test(up.name.getText(sf)))
           ) {
             overlay = true;
+            rctx = ts.isJsxAttribute(up) ? 'jsxattr' : (up as ts.PropertyAssignment).name.getText(sf);
             break;
           }
           up = up.parent;
         }
-        for (let i = before; i < out.roots.length; i++) out.rootOverlay[i] = overlay;
+        for (let i = before; i < out.roots.length; i++) {
+          out.rootOverlay[i] = overlay;
+          out.rootCtx[i] = rctx;
+        }
       }
       return; // 不再深入（子 JSX 已被 convert 递归）
     }

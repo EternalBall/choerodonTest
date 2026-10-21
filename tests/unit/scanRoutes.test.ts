@@ -53,7 +53,7 @@ describe('scanRoutes', () => {
     assert.equal(foo.files, 2);
     assert.ok(foo.bound >= 3); // 新建 + 保存 + 单表(kit table)
     assert.equal(foo.causes['button_needs_key_name'], 1); // 出炉（有文案，仅缺语义键名）
-    assert.equal(foo.causes['button_icon_only'], 2); // 图标按钮 + .map 里无字面量文案的按钮;
+    assert.equal(foo.causes['button_icon_only'], 1); // .map 里无字面量文案且无 icon 的按钮；icon="x" 的图标按钮已按 button:has(.icon-x) 绑定
     assert.equal(foo.causes['custom_unresolved:components/Lov'], 1);
     assert.equal(foo.causes['kit_missing:Output'], undefined);
     assert.equal(foo.spreads, 1);

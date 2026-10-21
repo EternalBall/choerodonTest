@@ -254,3 +254,28 @@ const P = () => (<div><EnableRender /><TemplatePrintButton printButtonCode="X" /
     assert.ok(!r.gaps.some((g) => g.cause?.startsWith('lib_unknown')));
   });
 });
+
+describe('图标按钮', () => {
+  it('主树 / 列头 / 行内三种作用域用 button:has(.icon-x)，行内与同图标多次出现记缺口', () => {
+    const src = `import { Table, Button } from 'choerodon-ui/pro';
+const cols = [
+  { name: 'a', header: () => <Button icon="add" onClick={addRow} />, renderer: () => <Button icon="remove" /> },
+];
+const P = () => (<div><Button icon="edit-o" /><Table dataSet={xDS} columns={cols} /></div>);`;
+    const r = bindPage({ entry: 'a', files: [pruneJsxSource(src, 'a/index.tsx')], followed: [] }, 't', 'feat_t');
+    assert.equal(r.locators.btnIconEditO.css, 'button:has(.icon-edit-o)');
+    assert.equal(r.locators.btnIconEditO.status, 'needs_review'); // 非 add/remove：类名按约定类推
+    assert.equal(r.locators.theadAddRowBtn.css, '.c7n-pro-table thead button:has(.icon-add)');
+    assert.equal(r.locators.theadAddRowBtn.status, 'proposed');
+    assert.equal(r.locators.rowIconRemoveBtn.css, '.c7n-pro-table-tbody tr.c7n-pro-table-row button:has(.icon-remove)');
+    assert.ok(r.gaps.some((g) => g.cause === 'row_icon_button'));
+    const edit = r.pages[0].nodes.find((n) => n.locator_key === 'btnIconEditO')!;
+    assert.equal(edit.locator_status, 'bound');
+  });
+  it('同作用域同图标出现两次 → dup_icon_button', () => {
+    const src = `import { Button } from 'choerodon-ui/pro';
+const P = () => (<div><Button icon="add" /><Button icon="add" /></div>);`;
+    const r = bindPage({ entry: 'a', files: [pruneJsxSource(src, 'a/index.tsx')], followed: [] }, 't', 'feat_t');
+    assert.equal(r.gaps.filter((g) => g.cause === 'dup_icon_button').length, 2);
+  });
+});
