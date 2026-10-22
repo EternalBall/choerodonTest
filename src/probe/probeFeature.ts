@@ -20,7 +20,7 @@ export type ProbeItem = {
   def: Record<string, unknown>;
   verdict: ProbeVerdict | 'skipped';
   /** 探测时页面所处阶段：初始 / 选中单据行后 / 详情页 / 点“编辑”后 */
-  stage?: 'initial' | 'row_selected' | 'detail' | 'edit';
+  stage?: 'initial' | 'row_selected' | 'detail' | 'edit' | 'create';
   count?: number;
   visible?: boolean;
   /** 第一个匹配元素的 tag / class（只读取） */
@@ -50,6 +50,8 @@ export type ProbeOptions = {
   timeoutMs?: number;
   /** 列表里的单据号：选中该行并进入其详情页，补探测行依赖与详情页定位（只点击，不输入、不保存） */
   doc?: string;
+  /** 点列表页“新建”进入新建页并探测（只点击，不输入、不保存，探测完直接关闭浏览器） */
+  create?: boolean;
 };
 
 export async function probeFeature(opts: ProbeOptions): Promise<ProbeReport> {
@@ -85,7 +87,7 @@ export async function probeFeature(opts: ProbeOptions): Promise<ProbeReport> {
       const withinCss = typeof def.within === 'string' ? (merged[String(def.within).split('.').pop()!]?.css as string | undefined) : undefined;
       const item: ProbeItem = { page: pg.file_entry, route: route ?? '', key, def, verdict: 'skipped' };
       if (!route) item.reason = '页面无独立路由（弹层/子组件），本期不探测';
-      else if (route.includes(':') && !opts.doc) item.reason = '路由需要数据 id，未指定 --doc，不探测';
+      else if (route.includes(':') && !opts.doc && !opts.create) item.reason = '路由需要数据 id，未指定 --doc 或 --create，不探测';
       else if (needsInteraction(key, def.css as string | undefined, withinCss)) item.reason = '需要先交互（弹层/下拉）才出现，本期不探测';
       items.push(item);
       if (!item.reason) (byRoute.get(route!) ?? byRoute.set(route!, []).get(route!)!).push(item);
@@ -179,6 +181,31 @@ export async function probeFeature(opts: ProbeOptions): Promise<ProbeReport> {
               } else {
                 pages.push({ route: url, ok: true, note: '未找到唯一的“编辑”按钮，未进入编辑态' });
               }
+            }
+          }
+        }
+
+        // 新建页：点列表“新建”，探测新建页里可编辑态的定位（不输入、不保存；复制条目，不覆盖详情页结果）
+        if (opts.create) {
+          const createDef = (merged.btnCreate ?? loc.locators?.btnCreate) as never;
+          const createBtn = createDef ? resolveLocator(page, lib, createDef) : undefined;
+          if (!createBtn || (await createBtn.count()) !== 1) {
+            pr.note = `${pr.note ? `${pr.note}；` : ''}未找到唯一的“新建”按钮，未进入新建页`;
+          } else {
+            await page.goto(route, { waitUntil: 'domcontentloaded', timeout: T });
+            await page.waitForSelector('.c7n-pro-table', { timeout: T });
+            await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
+            await resolveLocator(page, lib, createDef).click();
+            await page.waitForURL(/detail|dist|create/, { timeout: 20_000 }).catch(() => undefined);
+            await page.waitForSelector('.c7n-pro-table th[data-index], .c7n-pro-field, button.c7n-pro-btn', { timeout: T }).catch(() => undefined);
+            await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
+            await page.waitForTimeout(1500);
+            const url = new URL(page.url()).pathname;
+            pages.push({ route: url, ok: /detail|dist|create/.test(url), note: '由列表点击“新建”进入（未保存）' });
+            for (const dr of detailRoutes) {
+              const copies: ProbeItem[] = byRoute.get(dr)!.map((i) => ({ ...i, verdict: 'skipped' as const, reason: undefined, stage: undefined, count: undefined, visible: undefined, sample: undefined, suggested: undefined }));
+              await probeList(page, copies, 'create');
+              items.push(...copies);
             }
           }
         }
