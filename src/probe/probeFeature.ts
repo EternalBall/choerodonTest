@@ -19,8 +19,8 @@ export type ProbeItem = {
   key: string;
   def: Record<string, unknown>;
   verdict: ProbeVerdict | 'skipped';
-  /** 探测时页面所处阶段：初始 / 选中单据行后 / 详情页 */
-  stage?: 'initial' | 'row_selected' | 'detail';
+  /** 探测时页面所处阶段：初始 / 选中单据行后 / 详情页 / 点“编辑”后 */
+  stage?: 'initial' | 'row_selected' | 'detail' | 'edit';
   count?: number;
   visible?: boolean;
   /** 第一个匹配元素的 tag / class（只读取） */
@@ -167,6 +167,18 @@ export async function probeFeature(opts: ProbeOptions): Promise<ProbeReport> {
               const url = new URL(page.url()).pathname;
               pages.push({ route: url, ok: /detail|dist/.test(url), note: '由列表点击单号进入' });
               for (const dr of detailRoutes) await probeList(page, byRoute.get(dr)!, 'detail');
+
+              // 编辑态：点“编辑”（不保存、不改任何字段）后复探详情里仍未通过的定位
+              const editDef = (merged.btnEdit ?? loc.locators?.btnEdit) as never;
+              const editBtn = editDef ? resolveLocator(page, lib, editDef) : undefined;
+              if (editBtn && (await editBtn.count()) === 1) {
+                await editBtn.click();
+                await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
+                await page.waitForTimeout(1500);
+                for (const dr of detailRoutes) await probeList(page, byRoute.get(dr)!.filter((i) => i.verdict !== 'ok'), 'edit');
+              } else {
+                pages.push({ route: url, ok: true, note: '未找到唯一的“编辑”按钮，未进入编辑态' });
+              }
             }
           }
         }
