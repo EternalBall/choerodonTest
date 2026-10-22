@@ -159,8 +159,11 @@ export async function probeFeature(opts: ProbeOptions): Promise<ProbeReport> {
             } else {
               await link.click();
               await page.waitForURL(/detail|dist/, { timeout: 20_000 }).catch(() => undefined);
-              await page.waitForSelector('.page-content', { timeout: T }).catch(() => undefined);
+              // 详情页数据异步渲染：.page-content 在列表页就已存在，不能当就绪信号；
+              // 等详情自己的内容（表头/表体行/按钮）出现，再等网络空闲
+              await page.waitForSelector('.c7n-pro-table th[data-index], button.c7n-pro-btn', { timeout: T }).catch(() => undefined);
               await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
+              await page.waitForTimeout(1500);
               const url = new URL(page.url()).pathname;
               pages.push({ route: url, ok: /detail|dist/.test(url), note: '由列表点击单号进入' });
               for (const dr of detailRoutes) await probeList(page, byRoute.get(dr)!, 'detail');
