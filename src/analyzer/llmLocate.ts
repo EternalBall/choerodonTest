@@ -47,11 +47,32 @@ export function parseLocateResponse(text: string): unknown {
   return YAML.parse(body);
 }
 
-function coerce(raw: unknown, pre: PageLocateResult): PageLocateResult {
+/** 模型常把 locator.evidence 写成 [{file,note}] 列表（与节点 evidence 混淆）：统一压成一行字符串，其余非字符串字段丢弃 */
+export function normalizeLocatorDef(d: unknown): Record<string, unknown> {
+  const src = (d && typeof d === 'object' ? d : {}) as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...src };
+  const ev = src.evidence;
+  if (ev !== undefined && typeof ev !== 'string') {
+    const items = Array.isArray(ev) ? ev : [ev];
+    const text = items
+      .map((x) => (x && typeof x === 'object' ? [(x as Record<string, unknown>).file, (x as Record<string, unknown>).note].filter((v) => typeof v === 'string').join(' ') : typeof x === 'string' ? x : ''))
+      .filter(Boolean)
+      .join('；');
+    if (text) out.evidence = text;
+    else delete out.evidence;
+  }
+  for (const f of ['css', 'role', 'name', 'text', 'label', 'placeholder', 'testId', 'within', 'kit', 'status']) {
+    if (out[f] !== undefined && typeof out[f] !== 'string') delete out[f];
+  }
+  return out;
+}
+
+export function coerce(raw: unknown, pre: PageLocateResult): PageLocateResult {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<PageLocateResult>;
-  const locators = { ...(r.locators ?? {}) };
-  // LLM 丢掉的确定性绑定补回，保证预绑定不被静默吞掉
-  for (const [k, v] of Object.entries(pre.locators)) if (!(k in locators)) locators[k] = v;
+  const locators = Object.fromEntries(Object.entries(r.locators ?? {}).map(([k, v]) => [k, normalizeLocatorDef(v)])) as PageLocateResult['locators'];
+  // 确定性预绑定是权威：模型丢掉的补回，改写过的还原（自动应答曾把 `.c7n-pro-table >> nth=0` 改成不带 nth 的 kit 引用，
+  // 会同时匹配两张表）。模型只负责新增预绑定没有的键，不得改动预绑定已产出的定义
+  for (const [k, v] of Object.entries(pre.locators)) locators[k] = v;
   const pages = Array.isArray(r.pages) && r.pages.length ? r.pages : pre.pages;
   // 对账：unbound 节点的 suggest（角色+名称）若恰好有同定义的 locator，就绑到该 key
   for (const p of pages) {

@@ -90,6 +90,23 @@ export function isHandoffMode(): boolean {
   return (process.env.LLM_MODE || 'api').toLowerCase() === 'handoff';
 }
 
+export type HandoffPayload = { messages: DeepSeekChatMessage[]; temperature: number; responseFormatJson: boolean };
+
+/** 请求内容 → 稳定 key（handoff / delegate 两种模式共用同一套请求/应答文件） */
+export function handoffPayload(opts: { messages: DeepSeekChatMessage[]; temperature?: number; responseFormatJson?: boolean }): HandoffPayload {
+  return { messages: opts.messages, temperature: opts.temperature ?? 0.1, responseFormatJson: !!opts.responseFormatJson };
+}
+export function handoffKey(payload: HandoffPayload): string {
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 16);
+}
+export function handoffDir(): string {
+  return path.resolve(process.env.LLM_HANDOFF_DIR || 'artifacts/_llm-handoff');
+}
+
+export function isDelegateMode(): boolean {
+  return (process.env.LLM_MODE || 'api').toLowerCase() === 'delegate';
+}
+
 function handoffChat(opts: {
   messages: DeepSeekChatMessage[];
   temperature?: number;
@@ -122,6 +139,11 @@ export async function deepSeekChat(opts: {
 }): Promise<{ content: string; model: string }> {
   // handoff 模式不需要 API key，直接走文件交接（见上方说明）
   if (isHandoffMode()) return handoffChat(opts);
+  // delegate 模式：同一套请求/应答文件，但由 bird-delegate 拉起子 agent 自动应答（见 llmDelegate.ts）
+  if (isDelegateMode()) {
+    const { delegateChat } = await import('./llmDelegate.js');
+    return delegateChat(opts);
+  }
 
   const config = opts.config ?? loadDeepSeekConfig();
   const url = chatCompletionsUrl(config.baseURL);

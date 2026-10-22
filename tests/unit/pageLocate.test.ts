@@ -345,3 +345,20 @@ describe('模板串 name', () => {
     assert.ok(r.gaps.some((g) => g.cause === 'field_name_template'));
   });
 });
+
+describe('llm 应答整形', () => {
+  it('预绑定定义不可被模型改写；locator.evidence 写成列表时压成字符串', async () => {
+    const { coerce } = await import('../../src/analyzer/llmLocate.js');
+    const f = pruneJsxSource(SRC, 'a/index.tsx');
+    const pre = bindPage({ entry: 'a/index.tsx', files: [f], followed: [] }, '测试', 'feat_t');
+    const raw = {
+      locators: {
+        lineTable: { kit: 'table', status: 'needs_review' },
+        extraKey: { kit: 'formRoot', evidence: [{ file: 'a/index.tsx', note: 'L1 表单' }] },
+      },
+    };
+    const r = coerce(raw, pre);
+    assert.equal(r.locators.lineTable.css, '.c7n-pro-table >> nth=1');
+    assert.equal(r.locators.extraKey.evidence, 'a/index.tsx L1 表单');
+  });
+});

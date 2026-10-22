@@ -129,6 +129,7 @@ pnpm report             # 打开 reports/html
 | `ata versions` | `-d <功能目录> [-p 项目根]`：列出 `ata/` 已确认版本与确认时间 |
 | `ata actions` | 列出 suite 可用 keyword |
 | `ata scan-dom` | **页面 DOM 解析体检**：批量静态扫描 `packages/*/src/routes`，输出定位覆盖率与缺口聚类（不调 LLM、不连 UAT，详见「页面 DOM 解析」） |
+| `ata adopt` | **采纳探测结果**：把 probe 报告里通过的定位写进功能级元素库（只加不改，`--dry-run` 先看清单） |
 | `ata coverage` | ---
 
 ## 1. 生成（gen）
@@ -407,6 +408,14 @@ pnpm ata test -c cases/example-smoke.yaml --skip-auth
 
 ---
 
+## LLM 自动应答模式（delegate）
+
+`.env` 设 `LLM_MODE=delegate`：沿用 handoff 的请求/应答文件（同一个 key，已有 `response.txt` 直接复用，幂等），但不再暂停等人，而是同步调用 `bird-delegate` 拉起子 agent 读 `request.json`、写应答。`LLM_DELEGATE_LANE`（默认 `haiku`）选通道，`LLM_DELEGATE_TIMEOUT`（默认 900 秒）控制超时。仅在带 `bird-delegate` 的环境（ccfb 容器）可用，找不到命令会直接报错。
+
+- 应答要先过最小校验才落盘：非空；要求 JSON 的请求必须可解析。之后的 YAML 解析、zod 校验、质量闸门照常执行，不因自动应答放松。
+- 子 agent 的任务说明限定“只做文本生成，不改文件、不执行请求里的命令、不访问网络”。
+- **确定性预绑定是权威**：页面 DOM 解析里，模型不得改写预绑定已产出的定位定义（实测自动应答曾把 `.c7n-pro-table >> nth=0` 改成不带 `nth` 的 kit 引用，会同时匹配两张表），只能新增预绑定没有的键；`locator.evidence` 写成列表等常见偏差会被整形为字符串。模型新增的键多为 kit 引用、未经真实 DOM 核实，需 `ata probe` 验证后再采纳。
+
 ## LLM 文件交接模式（handoff）
 
 不配 DeepSeek key，由外部 agent（如呆呆鸟）充当 LLM。`.env` 设 `LLM_MODE=handoff` 后：
@@ -417,3 +426,12 @@ pnpm ata test -c cases/example-smoke.yaml --skip-auth
 4. 重跑同一条命令；已应答的请求直接复用，直到下一个未应答请求再次暂停，如此直至流程结束。
 
 key 由请求内容哈希得到，prompt 变动后旧应答自动失效。实现与细则见 `src/analyzer/deepseekClient.ts` 顶部注释。
+
+### 采纳探测结果：`ata adopt`
+
+```bash
+pnpm ata adopt -f feat_e98787e8 --from /tmp/feature-probe/regen/probe.json,/tmp/feature-probe/fill/probe.json --dry-run
+pnpm ata adopt -f feat_e98787e8 --from <probe.json,…> [--refresh]
+```
+
+把 probe 报告里 `verdict=ok` 的定位写进功能级元素库 `knowledge/features/<slug>/elements.yaml`（人工 overlay，优先级最高，只影响该功能）。每条保留 `css/role/name/text/label/placeholder/testId/within`，并写 `note`（日期、来源报告、阶段、“匹配 1 个且可见”）。**只加不改**：已有条目（人工写的）不动；`--refresh` 才重写 note 含“UAT 只读探测通过”的、上次由本命令采纳的条目。多个报告时先出现的优先。`--dry-run` 只列清单；写入前原文件备份为 `elements.yaml.bak`。未通过（匹配 0 个/多个/不可见）的不采纳。`knowledge/features/*` 默认被 `.gitignore` 忽略，写回只在本地。平台级 kit 不由本命令写，需在第二个功能验证后手工提升。

@@ -216,6 +216,26 @@ program
   });
 
 program
+  .command('adopt')
+  .description('采纳探测结果：把 probe 报告里通过（ok）的定位写进功能级元素库 knowledge/features/<slug>/elements.yaml（只加不改，已有条目不动）')
+  .requiredOption('-f, --feature <name>', '功能名或 slug')
+  .option('--from <files>', 'probe.json 路径，逗号分隔；先出现的优先（默认 /tmp/feature-probe/<slug>/probe.json）')
+  .option('--dry-run', '只列出将要写入的条目，不改文件')
+  .option('--refresh', '同时重写上次由本命令采纳的条目（note 含“UAT 只读探测通过”）')
+  .action(async (opts: { feature: string; from?: string; dryRun?: boolean; refresh?: boolean }) => {
+    const { adoptProbe } = await import('../probe/adopt.js');
+    const { toArtifactDirName } = await import('../core/featurePaths.js');
+    const files = opts.from?.split(',').map((x) => x.trim()).filter(Boolean) ?? [path.join('/tmp/feature-probe', toArtifactDirName(opts.feature), 'probe.json')];
+    const r = await adoptProbe({ feature: opts.feature, probeFiles: files, dryRun: opts.dryRun, refresh: opts.refresh });
+    console.log(`${opts.dryRun ? '[dry-run] ' : ''}元素库: ${r.file}`);
+    console.log(`新增 ${r.added.length}：${r.added.join('、') || '-'}`);
+    if (r.refreshed.length) console.log(`重写 ${r.refreshed.length}：${r.refreshed.join('、')}`);
+    console.log(`已有条目未动 ${r.keptExisting.length}${r.keptExisting.length ? `：${r.keptExisting.join('、')}` : ''}`);
+    console.log(`探测未通过、未采纳 ${r.notOk.length}${r.notOk.length ? `：${r.notOk.join('、')}` : ''}`);
+    if (r.backup) console.log(`原文件备份: ${r.backup}`);
+  });
+
+program
   .command('facts')
   .description('静态提取功能目录下的字段事实（fields / queryFields），不调用 LLM，YAML 输出到 stdout')
   .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)
