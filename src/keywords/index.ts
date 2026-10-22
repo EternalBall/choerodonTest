@@ -90,6 +90,17 @@ export const actions: Record<string, ActionHandler> = {
           });
           continue;
         }
+        if (control === 'switch') {
+          // c7n Switch：input 本体不可填，点外层 label 切换；value 为 Y/true/1 视为开启
+          const want = /^(y|true|1)$/i.test(String(o.value ?? 'Y'));
+          const input = target ? ctx.el(target) : ctx.page.locator(`input[name="${name}"]`).first();
+          if ((await input.isChecked()) !== want) {
+            // input 自身带 class c7n-pro-switch（且不可点），实际可点的是外层 label
+            const wrapper = input.locator('xpath=ancestor::label[1]');
+            await wrapper.click();
+          }
+          continue;
+        }
         if (control === 'lov') {
           if (!target && !o.open) {
             throw new Error('fillForm lov 字段需要 open/target（元素库 Lov 搜索图标）');
