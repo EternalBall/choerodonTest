@@ -302,7 +302,7 @@ pnpm ata probe -f feat_e98787e8 -p ../../repos/pdl-front [--statuses proposed,ne
 
 打开功能的列表类页面，对 `page-locators.yaml` 里指定状态（默认 `needs_review`）的定位做 `count()` / `isVisible()` / 读取 tag 与 class，输出 `/tmp/feature-probe/<slug>/probe.{md,json}`。结论：`ok`（可见且唯一或已 `nth` 收敛）/ `multiple` / `missing` / `hidden` / `skipped`（含原因）。**严格只读**：不点击、不输入、不保存，单测会检查探测模块源码里没有这类调用。需要 `.env` 的 `BASE_URL` 和 `playwright/.auth/user.json` 登录态（失效时报错，需先 `ata auth`），内网访问可用 `--proxy`。
 
-`--doc <单据号>`：在列表头表里选中该单据行（单击行）→ 复探依赖数据的定位 → 点击单号链接进入详情页并探测详情页定位（只点击，不输入、不保存；单号不是链接或不在当前页时在页面说明里注明，不强行进入）。进入详情后还会点一次“编辑”（不保存、不改字段）复探仍未通过的定位。报告有“阶段”列：initial / row_selected / detail / edit。`--create`：回到列表点“新建”进入新建页（`detail/create`）探测，只点击、不输入、不保存，结果以 `create` 阶段另列。点击共 4 处（选中行、点单号、点编辑、点新建），单测限定数量。
+`--doc <单据号>`：在列表头表里选中该单据行（单击行）→ 复探依赖数据的定位 → 点击单号链接进入详情页并探测详情页定位（只点击，不输入、不保存；单号不是链接或不在当前页时在页面说明里注明，不强行进入）。进入详情后还会点一次“编辑”（不保存、不改字段）复探仍未通过的定位。报告有“阶段”列：initial / row_selected / detail / edit。`--create`：回到列表点“新建”进入新建页（`detail/create`）探测，只点击、不输入、不保存，结果以 `create` 阶段另列。新建页里若表头“新增”图标可用则再点一次加行并复探行内定位、再点行内删除图标看确认气泡（只弹出，不确认）；它被禁用时（多半要先填表头必填项）如实记录并跳过，不做输入。点击共 6 处，单测限定数量。
 
 限制：未指定 `--doc` 时详情页（路由带 `:id`）不探测；弹层/抽屉/下拉里的定位（`InModal` 或 css 含 modal/popup/dropdown）本期不探测，标 `skipped`；`missing` 不等于定位错误（行内链接需要数据行、下拉需要先交互），建议状态只写在报告里，不自动改 `elements.yaml`。`ok` 只证明此刻能匹配到，不证明语义正确。
 

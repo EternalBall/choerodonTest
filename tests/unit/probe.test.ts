@@ -24,12 +24,12 @@ describe('judgeProbe', () => {
 });
 
 describe('只读保证', () => {
-  it('探测模块源码不含输入/勾选/保存类调用，点击仅限 4 处（选中行、点单号链接、点“编辑”、点“新建”）', () => {
+  it('探测模块源码不含输入/勾选/保存类调用，点击仅限 6 处（选中行、点单号链接、点“编辑”、点“新建”、点表头新增图标、点行内删除图标）', () => {
     const src = ['src/probe/probeFeature.ts', 'src/probe/judge.ts'].map((f) => fs.readFileSync(f, 'utf8')).join('\n');
     const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     for (const m of ['.dblclick(', '.fill(', '.type(', '.press(', '.check(', '.uncheck(', '.selectOption(', '.dispatchEvent(', '.setInputFiles(', '.dragTo(', '.pressSequentially(']) {
       assert.ok(!code.includes(m), `不应出现 ${m}`);
     }
-    assert.equal((code.match(/\.click\(/g) ?? []).length, 4);
+    assert.equal((code.match(/\.click\(/g) ?? []).length, 6);
   });
 });

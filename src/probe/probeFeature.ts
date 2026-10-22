@@ -20,7 +20,7 @@ export type ProbeItem = {
   def: Record<string, unknown>;
   verdict: ProbeVerdict | 'skipped';
   /** 探测时页面所处阶段：初始 / 选中单据行后 / 详情页 / 点“编辑”后 */
-  stage?: 'initial' | 'row_selected' | 'detail' | 'edit' | 'create';
+  stage?: 'initial' | 'row_selected' | 'detail' | 'edit' | 'create' | 'create_row' | 'create_remove';
   count?: number;
   visible?: boolean;
   /** 第一个匹配元素的 tag / class（只读取） */
@@ -206,6 +206,26 @@ export async function probeFeature(opts: ProbeOptions): Promise<ProbeReport> {
               const copies: ProbeItem[] = byRoute.get(dr)!.map((i) => ({ ...i, verdict: 'skipped' as const, reason: undefined, stage: undefined, count: undefined, visible: undefined, sample: undefined, suggested: undefined }));
               await probeList(page, copies, 'create');
               items.push(...copies);
+
+              // 新增一行（点表头“新增”图标，行只存在于未保存的草稿）→ 复探行内定位；再点行内删除图标（只弹出确认气泡，不确认）
+              const addDef = (merged.theadAddBtn ?? loc.locators?.theadAddBtn) as never;
+              const addBtn = addDef ? resolveLocator(page, lib, addDef) : undefined;
+              const addCount = addBtn ? await addBtn.count() : -1;
+              if (addCount !== 1) pr.note = `${pr.note ? `${pr.note}；` : ''}新增图标按钮匹配 ${addCount} 个（需恰好 1 个），未新增行`;
+              const addEnabled = addBtn && addCount === 1 ? await addBtn.isEnabled() : false;
+              if (addCount === 1 && !addEnabled) pr.note = `${pr.note ? `${pr.note}；` : ''}新增图标按钮当前是禁用状态（多半要先填表头必填项，探测不做输入），未新增行`;
+              if (addBtn && addCount === 1 && addEnabled) {
+                await addBtn.click();
+                await page.waitForTimeout(1500);
+                await probeList(page, copies.filter((i) => i.verdict !== 'ok'), 'create_row');
+                const rmDef = (merged.rowIconRemoveBtn ?? loc.locators?.rowIconRemoveBtn) as never;
+                const rmBtn = rmDef ? resolveLocator(page, lib, rmDef) : undefined;
+                if (rmBtn && (await rmBtn.count()) === 1) {
+                  await rmBtn.click();
+                  await page.waitForTimeout(800);
+                  await probeList(page, copies.filter((i) => i.verdict !== 'ok'), 'create_remove');
+                }
+              }
             }
           }
         }
