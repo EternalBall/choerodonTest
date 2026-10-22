@@ -188,9 +188,10 @@ program
   .option('--proxy <url>', '浏览器代理（访问内网时用 bird-net proxy 的地址）')
   .option('--statuses <list>', '要探测的定位状态，逗号分隔', 'needs_review')
   .option('--doc <单据号>', '列表里的单据号：选中该行并点击单号进入详情，补探测行依赖与详情页定位（只点击，不输入、不保存）')
-  .option('--create', '点列表页“新建”进入新建页并探测（只点击，不输入、不保存）')
+  .option('--create', '点列表页“新建”进入新建页并探测（不保存）')
+  .option('--fill-required', '配合 --create：新增按钮被禁用时，给站点/供应商/退货原因各选第一条再继续（只在未保存草稿里选值）')
   .option('-o, --out <dir>', '报表输出目录（默认 /tmp/feature-probe/<slug>）')
-  .action(async (opts: { feature: string; project: string; proxy?: string; statuses: string; doc?: string; create?: boolean; out?: string }) => {
+  .action(async (opts: { feature: string; project: string; proxy?: string; statuses: string; doc?: string; create?: boolean; fillRequired?: boolean; out?: string }) => {
     const { probeFeature, renderProbeMd } = await import('../probe/probeFeature.js');
     await import('dotenv/config');
     const baseURL = process.env.BASE_URL;
@@ -203,6 +204,7 @@ program
       proxy: opts.proxy,
       doc: opts.doc,
       create: opts.create,
+      fillRequired: opts.fillRequired,
       statuses: opts.statuses.split(',').map((x) => x.trim()).filter(Boolean),
     });
     const out = opts.out ?? path.join('/tmp/feature-probe', r.slug);

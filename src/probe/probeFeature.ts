@@ -3,7 +3,9 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { chromium, type Page } from '@playwright/test';
 import { featureArtifactDir, featureArtifactFile, toArtifactDirName } from '../core/featurePaths.js';
-import { resolveLocator } from '../keywords/resolveElement.js';
+import { createElResolver, resolveLocator } from '../keywords/resolveElement.js';
+import { pickLov } from '../keywords/pickLov.js';
+import { pickSelect } from '../keywords/pickSelect.js';
 import { buildFeatureElementLib } from '../knowledge/platformKit.js';
 import { resolveHints } from '../analyzer/featureCoverage.js';
 import { judgeProbe, needsInteraction, suggestStatus, type ProbeVerdict } from './judge.js';
@@ -20,7 +22,7 @@ export type ProbeItem = {
   def: Record<string, unknown>;
   verdict: ProbeVerdict | 'skipped';
   /** 探测时页面所处阶段：初始 / 选中单据行后 / 详情页 / 点“编辑”后 */
-  stage?: 'initial' | 'row_selected' | 'detail' | 'edit' | 'create' | 'create_row' | 'create_remove';
+  stage?: 'initial' | 'row_selected' | 'detail' | 'edit' | 'create' | 'create_filled' | 'create_row' | 'create_cell' | 'create_remove';
   count?: number;
   visible?: boolean;
   /** 第一个匹配元素的 tag / class（只读取） */
@@ -52,6 +54,8 @@ export type ProbeOptions = {
   doc?: string;
   /** 点列表页“新建”进入新建页并探测（只点击，不输入、不保存，探测完直接关闭浏览器） */
   create?: boolean;
+  /** 新建页新增按钮被禁用时，按现有用例的做法给必填项各选第一条（站点/供应商/退货原因；只在未保存草稿里选值，不保存） */
+  fillRequired?: boolean;
 };
 
 export async function probeFeature(opts: ProbeOptions): Promise<ProbeReport> {
@@ -212,12 +216,35 @@ export async function probeFeature(opts: ProbeOptions): Promise<ProbeReport> {
               const addBtn = addDef ? resolveLocator(page, lib, addDef) : undefined;
               const addCount = addBtn ? await addBtn.count() : -1;
               if (addCount !== 1) pr.note = `${pr.note ? `${pr.note}；` : ''}新增图标按钮匹配 ${addCount} 个（需恰好 1 个），未新增行`;
-              const addEnabled = addBtn && addCount === 1 ? await addBtn.isEnabled() : false;
+              let addEnabled = addBtn && addCount === 1 ? await addBtn.isEnabled() : false;
+              if (addCount === 1 && !addEnabled && opts.fillRequired) {
+                // 与 suite 里“新建采购退货单”用例同一套已跑通的选值步骤：只在未保存草稿里选第一条
+                const ctx2 = { page, el: createElResolver(page, lib), vars: {} } as never;
+                try {
+                  await pickLov(ctx2, { open: `${slug}.siteLovOpen`, first: true });
+                  await pickLov(ctx2, { open: `${slug}.supplierLovOpen`, first: true });
+                  await pickSelect(ctx2, { name: 'returnReason', first: true });
+                  await page.waitForTimeout(1000);
+                  pr.note = `${pr.note ? `${pr.note}；` : ''}已为站点、供应商、退货原因各选第一条（未保存）`;
+                  await probeList(page, copies.filter((i) => i.verdict !== 'ok'), 'create_filled');
+                  addEnabled = await addBtn!.isEnabled();
+                } catch (e) {
+                  pr.note = `${pr.note ? `${pr.note}；` : ''}选必填项失败：${String(e).slice(0, 120)}`;
+                }
+              }
               if (addCount === 1 && !addEnabled) pr.note = `${pr.note ? `${pr.note}；` : ''}新增图标按钮当前是禁用状态（多半要先填表头必填项，探测不做输入），未新增行`;
               if (addBtn && addCount === 1 && addEnabled) {
                 await addBtn.click();
                 await page.waitForTimeout(1500);
                 await probeList(page, copies.filter((i) => i.verdict !== 'ok'), 'create_row');
+                // 点一次物料单元格激活行内编辑器（只点击，不选值），复探行内 Lov/Select 编辑器定位
+                const cellDef = (merged.materialLovCell ?? loc.locators?.materialLovCell) as never;
+                const cell = cellDef ? resolveLocator(page, lib, cellDef) : undefined;
+                if (cell && (await cell.count()) >= 1) {
+                  await cell.first().click();
+                  await page.waitForTimeout(800);
+                  await probeList(page, copies.filter((i) => i.verdict !== 'ok'), 'create_cell');
+                }
                 const rmDef = (merged.rowIconRemoveBtn ?? loc.locators?.rowIconRemoveBtn) as never;
                 const rmBtn = rmDef ? resolveLocator(page, lib, rmDef) : undefined;
                 if (rmBtn && (await rmBtn.count()) === 1) {
