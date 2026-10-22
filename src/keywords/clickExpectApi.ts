@@ -23,7 +23,10 @@ export async function clickExpectApi(
   const successNeedles = normalizeNeedles(args.successUrlIncludes);
   const successList = successNeedles.length ? successNeedles : needles;
 
-  const methods = (Array.isArray(args.methods) ? args.methods : ['POST', 'PUT']).map((m) =>
+  // 未显式指定时：写接口默认 POST/PUT；查询类接口（list/query/detail/page）常为 GET，一并放行
+  const readLike = needles.some((n) => /\/(list|query|detail|page)(\/|$|\?)/i.test(n));
+  const defaultMethods = readLike ? ['GET', 'POST', 'PUT'] : ['POST', 'PUT'];
+  const methods = (Array.isArray(args.methods) ? args.methods : defaultMethods).map((m) =>
     String(m).toUpperCase(),
   );
   const timeout = Number(args.timeout ?? 30_000);

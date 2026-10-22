@@ -20,12 +20,16 @@ export function resolveLocator(
   lib: ElementLib,
   refOrDef: string | LocatorDef,
   root?: Locator,
+  ns?: string,
 ): Locator {
   const def = typeof refOrDef === 'string' ? getByPath(lib, refOrDef) : refOrDef;
+  const curNs = typeof refOrDef === 'string' ? refOrDef.split('.')[0] : ns;
 
   let scope: Page | Locator = root ?? page;
   if (def.within) {
-    scope = resolveLocator(page, lib, def.within);
+    // within 可能是同命名空间内的裸键（如 listRoot），补上当前命名空间
+    const w = def.within.includes('.') || !curNs ? def.within : `${curNs}.${def.within}`;
+    scope = resolveLocator(page, lib, w);
   }
 
   if (def.testId) return scope.getByTestId(def.testId);
