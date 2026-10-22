@@ -66,7 +66,13 @@ export async function probeFeature(opts: ProbeOptions): Promise<ProbeReport> {
   if (!locText) throw new Error('缺少 page-locators.yaml，请先跑 ata gen 生成页面定位草案');
   const loc = YAML.parse(locText) as { pages?: { file_entry: string; nodes: { locator_key?: string }[] }[]; locators?: Record<string, Record<string, unknown>> };
   const merged = (await buildFeatureElementLib(opts.feature, featureYaml as never)) as Record<string, Record<string, unknown>>;
-  const lib = { [slug]: merged };
+  // 元素库/页面定位草案里的 within 可能是同功能内的裸键（如 listRoot），补成 slug.key；草案定位并入查找库（元素库同名键优先）
+  const qualify = (d: Record<string, unknown>) =>
+    typeof d.within === 'string' && !d.within.includes('.') ? { ...d, within: `${slug}.${d.within}` } : d;
+  const draft: Record<string, Record<string, unknown>> = {};
+  for (const [k, d] of Object.entries(loc.locators ?? {})) draft[k] = qualify(d);
+  for (const k of Object.keys(merged)) merged[k] = qualify(merged[k]);
+  const lib = { [slug]: { ...draft, ...merged } };
 
   // route → 源码文件（用 source_hint 解析），再映射到 page-locators 的页面
   const files = await listFiles(root);
@@ -84,11 +90,11 @@ export async function probeFeature(opts: ProbeOptions): Promise<ProbeReport> {
     const route = routeOfEntry.get(abs);
     const keys = [...new Set(pg.nodes.map((n) => n.locator_key).filter((k): k is string => !!k))];
     for (const key of keys) {
-      const def = (merged[key] ?? loc.locators?.[key]) as Record<string, unknown> | undefined;
+      const def = (merged[key] ?? draft[key]) as Record<string, unknown> | undefined;
       if (!def) continue;
       const status = (loc.locators?.[key]?.status as string | undefined) ?? 'proposed';
       if (!wanted.has(status)) continue;
-      const withinCss = typeof def.within === 'string' ? (merged[String(def.within).split('.').pop()!]?.css as string | undefined) : undefined;
+      const withinCss = typeof def.within === 'string' ? (lib[slug][String(def.within).split('.').pop()!]?.css as string | undefined) : undefined;
       const item: ProbeItem = { page: pg.file_entry, route: route ?? '', key, def, verdict: 'skipped' };
       if (!route) item.reason = '页面无独立路由（弹层/子组件），本期不探测';
       else if (route.includes(':') && !opts.doc && !opts.create) item.reason = '路由需要数据 id，未指定 --doc 或 --create，不探测';
@@ -159,7 +165,8 @@ export async function probeFeature(opts: ProbeOptions): Promise<ProbeReport> {
             await probeList(page, list.filter((i) => i.verdict !== 'ok'), 'row_selected');
             const linkDef = loc.locators?.instructionDocNumLink;
             const linkCss = typeof linkDef?.css === 'string' ? linkDef.css : undefined;
-            const link = linkCss ? row.locator(linkCss).first() : undefined;
+            // 无 css 的链接定位（kit 引用）：退回按单号文本在该行里找 <a>
+            const link = linkCss ? row.locator(linkCss).first() : row.locator('a').filter({ hasText: opts.doc }).first();
             if (!link || (await link.count()) === 0) {
               pr.note = `单据 ${opts.doc} 的单号不是链接（该功能仅部分状态可进详情），未进入详情页`;
             } else {
