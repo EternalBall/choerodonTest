@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import YAML from 'yaml';
-import { chromium } from '@playwright/test';
+import { chromium, type Page } from '@playwright/test';
 import { featureArtifactDir, featureArtifactFile, toArtifactDirName } from '../core/featurePaths.js';
 import { resolveLocator } from '../keywords/resolveElement.js';
 import { buildFeatureElementLib } from '../knowledge/platformKit.js';
@@ -19,6 +19,8 @@ export type ProbeItem = {
   key: string;
   def: Record<string, unknown>;
   verdict: ProbeVerdict | 'skipped';
+  /** 探测时页面所处阶段：初始 / 选中单据行后 / 详情页 */
+  stage?: 'initial' | 'row_selected' | 'detail';
   count?: number;
   visible?: boolean;
   /** 第一个匹配元素的 tag / class（只读取） */
@@ -32,7 +34,7 @@ export type ProbeReport = {
   slug: string;
   baseURL: string;
   generatedAt: string;
-  pages: { route: string; ok: boolean; tableCount?: number; error?: string }[];
+  pages: { route: string; ok: boolean; tableCount?: number; error?: string; note?: string }[];
   items: ProbeItem[];
   summary: Record<string, number>;
 };
@@ -46,6 +48,8 @@ export type ProbeOptions = {
   /** 只探测这些状态的定位（默认 needs_review） */
   statuses?: string[];
   timeoutMs?: number;
+  /** 列表里的单据号：选中该行并进入其详情页，补探测行依赖与详情页定位（只点击，不输入、不保存） */
+  doc?: string;
 };
 
 export async function probeFeature(opts: ProbeOptions): Promise<ProbeReport> {
@@ -81,7 +85,7 @@ export async function probeFeature(opts: ProbeOptions): Promise<ProbeReport> {
       const withinCss = typeof def.within === 'string' ? (merged[String(def.within).split('.').pop()!]?.css as string | undefined) : undefined;
       const item: ProbeItem = { page: pg.file_entry, route: route ?? '', key, def, verdict: 'skipped' };
       if (!route) item.reason = '页面无独立路由（弹层/子组件），本期不探测';
-      else if (route.includes(':')) item.reason = '路由需要数据 id，本期不探测';
+      else if (route.includes(':') && !opts.doc) item.reason = '路由需要数据 id，未指定 --doc，不探测';
       else if (needsInteraction(key, def.css as string | undefined, withinCss)) item.reason = '需要先交互（弹层/下拉）才出现，本期不探测';
       items.push(item);
       if (!item.reason) (byRoute.get(route!) ?? byRoute.set(route!, []).get(route!)!).push(item);
@@ -96,37 +100,73 @@ export async function probeFeature(opts: ProbeOptions): Promise<ProbeReport> {
   });
   try {
     const ctx = await browser.newContext({ storageState: opts.storageState, baseURL: opts.baseURL, ignoreHTTPSErrors: true });
-    for (const [route, list] of byRoute) {
+    const probeList = async (page: Page, list: ProbeItem[], stage: NonNullable<ProbeItem['stage']>) => {
+      for (const it of list) {
+        try {
+          const target = resolveLocator(page, lib, it.def as never);
+          const count = await target.count();
+          const first = target.first();
+          const visible = count > 0 ? await first.isVisible() : false;
+          it.count = count;
+          it.visible = visible;
+          if (count > 0) {
+            it.sample = await first.evaluate((el: { tagName: string; textContent: string | null; getAttribute(n: string): string | null }) => ({
+              tag: el.tagName.toLowerCase(),
+              cls: String(el.getAttribute('class') ?? '').slice(0, 80),
+              text: (el.textContent ?? '').trim().slice(0, 30),
+            }));
+          }
+          it.verdict = judgeProbe({ count, firstVisible: visible }, it.def.css as string | undefined);
+          it.suggested = suggestStatus(it.verdict);
+          it.stage = stage;
+          it.reason = undefined;
+        } catch (e) {
+          it.reason = `探测出错：${String(e).slice(0, 120)}`;
+        }
+      }
+    };
+    const staticRoutes = [...byRoute.keys()].filter((r) => !r.includes(':'));
+    const detailRoutes = [...byRoute.keys()].filter((r) => r.includes(':'));
+    const T = opts.timeoutMs ?? 45_000;
+    for (const route of staticRoutes) {
+      const list = byRoute.get(route)!;
       const page = await ctx.newPage();
       const pr: ProbeReport['pages'][number] = { route, ok: false };
       try {
-        await page.goto(route, { waitUntil: 'domcontentloaded', timeout: opts.timeoutMs ?? 45_000 });
-        await page.waitForSelector('.page-content, .c7n-pro-table', { timeout: opts.timeoutMs ?? 45_000 });
+        await page.goto(route, { waitUntil: 'domcontentloaded', timeout: T });
+        // 登录态失效会被重定向到登录页：先等页面稳定再判断，避免空等 45 秒后才报超时
+        await page.waitForSelector('.page-content, .c7n-pro-table, input[type="password"]', { timeout: T });
+        if (/login|oauth|sso/i.test(new URL(page.url()).pathname)) throw new Error('登录态失效（已被重定向到登录页），请先运行 ata auth');
         await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
-        if (/login|oauth|sso/i.test(new URL(page.url()).pathname)) throw new Error('登录态失效，请先运行 ata auth');
         pr.tableCount = await page.locator('.c7n-pro-table').count();
-        for (const it of list) {
-          try {
-            const loc = resolveLocator(page, lib, it.def as never);
-            const count = await loc.count();
-            const first = loc.first();
-            const visible = count > 0 ? await first.isVisible() : false;
-            it.count = count;
-            it.visible = visible;
-            if (count > 0) {
-              it.sample = await first.evaluate((el: { tagName: string; textContent: string | null; getAttribute(n: string): string | null }) => ({
-                tag: el.tagName.toLowerCase(),
-                cls: String(el.getAttribute('class') ?? '').slice(0, 80),
-                text: (el.textContent ?? '').trim().slice(0, 30),
-              }));
+        await probeList(page, list, 'initial');
+        pr.ok = true;
+
+        // 指定单据：选中头表该行（单击行，触发行表查询）→ 复探依赖数据的定位 → 点单号链接进详情
+        if (opts.doc) {
+          const row = page.locator('.c7n-pro-table').nth(0).locator('tr.c7n-pro-table-row').filter({ hasText: opts.doc }).first();
+          if ((await row.count()) === 0) {
+            pr.note = `头表当前页没有单据 ${opts.doc}（可能在其它分页），未选中行`;
+          } else {
+            await row.click();
+            await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
+            await probeList(page, list.filter((i) => i.verdict !== 'ok'), 'row_selected');
+            const linkDef = loc.locators?.instructionDocNumLink;
+            const linkCss = typeof linkDef?.css === 'string' ? linkDef.css : undefined;
+            const link = linkCss ? row.locator(linkCss).first() : undefined;
+            if (!link || (await link.count()) === 0) {
+              pr.note = `单据 ${opts.doc} 的单号不是链接（该功能仅部分状态可进详情），未进入详情页`;
+            } else {
+              await link.click();
+              await page.waitForURL(/detail|dist/, { timeout: 20_000 }).catch(() => undefined);
+              await page.waitForSelector('.page-content', { timeout: T }).catch(() => undefined);
+              await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => undefined);
+              const url = new URL(page.url()).pathname;
+              pages.push({ route: url, ok: /detail|dist/.test(url), note: '由列表点击单号进入' });
+              for (const dr of detailRoutes) await probeList(page, byRoute.get(dr)!, 'detail');
             }
-            it.verdict = judgeProbe({ count, firstVisible: visible }, it.def.css as string | undefined);
-            it.suggested = suggestStatus(it.verdict);
-          } catch (e) {
-            it.reason = `探测出错：${String(e).slice(0, 120)}`;
           }
         }
-        pr.ok = true;
       } catch (e) {
         pr.error = String(e).slice(0, 200);
         for (const it of list) it.reason = `页面未能打开：${pr.error}`;
@@ -169,11 +209,11 @@ export function renderProbeMd(r: ProbeReport): string {
   const L: string[] = [`# ${r.feature} 只读探测报告`, '', `环境：${r.baseURL}　时间：${r.generatedAt}`, '只读：仅 goto / count / isVisible / 读取属性，未做任何点击、输入或保存。', ''];
   L.push('## 汇总', '', Object.entries(r.summary).map(([k, v]) => `- ${k}：${v}`).join('\n') || '无待探测项', '');
   L.push('## 页面', '', '| 路由 | 结果 | .c7n-pro-table 数 | 说明 |', '|---|---|---|---|');
-  for (const p of r.pages) L.push(`| ${p.route} | ${p.ok ? '已打开' : '失败'} | ${p.tableCount ?? '-'} | ${p.error ?? ''} |`);
-  L.push('', '## 定位核对', '', '| 定位键 | 结论 | 匹配数 | 可见 | 样例 | 建议状态 | 备注 |', '|---|---|---|---|---|---|---|');
+  for (const p of r.pages) L.push(`| ${p.route} | ${p.ok ? '已打开' : '失败'} | ${p.tableCount ?? '-'} | ${p.error ?? p.note ?? ''} |`);
+  L.push('', '## 定位核对', '', '| 定位键 | 阶段 | 结论 | 匹配数 | 可见 | 样例 | 建议状态 | 备注 |', '|---|---|---|---|---|---|---|---|');
   for (const it of r.items) {
     const s = it.sample ? `<${it.sample.tag}> ${it.sample.cls}` : '-';
-    L.push(`| ${it.key} | ${it.verdict} | ${it.count ?? '-'} | ${it.visible ?? '-'} | ${s} | ${it.suggested ?? '-'} | ${it.reason ?? ''} |`);
+    L.push(`| ${it.key} | ${it.stage ?? '-'} | ${it.verdict} | ${it.count ?? '-'} | ${it.visible ?? '-'} | ${s} | ${it.suggested ?? '-'} | ${it.reason ?? ''} |`);
   }
   L.push('', '说明：建议状态只写在报告里，不会自动改 elements.yaml；探测只证明“此刻页面上能匹配到”，不证明语义正确（如 nth 指向的是不是想要的那张表）。missing 不等于定位错误：行内链接要有数据行、下拉与弹层要先交互才会出现，需结合数据和操作判断。');
   return L.join('\n') + '\n';

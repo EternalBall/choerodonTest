@@ -24,11 +24,12 @@ describe('judgeProbe', () => {
 });
 
 describe('只读保证', () => {
-  it('探测模块源码不含写/交互类 Playwright 调用', () => {
+  it('探测模块源码不含输入/勾选/保存类调用，点击仅限 2 处（选中行、点单号链接）', () => {
     const src = ['src/probe/probeFeature.ts', 'src/probe/judge.ts'].map((f) => fs.readFileSync(f, 'utf8')).join('\n');
     const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-    for (const m of ['click(', 'dblclick(', 'fill(', 'type(', 'press(', 'check(', 'uncheck(', 'selectOption(', 'dispatchEvent(', 'setInputFiles(', 'drag']) {
-      assert.ok(!code.includes(`.${m}`) && !code.includes(m === 'drag' ? 'dragTo' : `.${m}`), `不应出现 ${m}`);
+    for (const m of ['.dblclick(', '.fill(', '.type(', '.press(', '.check(', '.uncheck(', '.selectOption(', '.dispatchEvent(', '.setInputFiles(', '.dragTo(', '.pressSequentially(']) {
+      assert.ok(!code.includes(m), `不应出现 ${m}`);
     }
+    assert.equal((code.match(/\.click\(/g) ?? []).length, 2);
   });
 });
