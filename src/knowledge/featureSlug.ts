@@ -1,8 +1,11 @@
+import { createHash } from 'node:crypto';
+
 /** 功能名 → 稳定 slug（产物目录 / 元素命名空间 / knowledge 目录） */
 export function featureSlug(feature: string): string {
   const ascii = feature.replace(/[^\w]+/g, '_').replace(/^_|_$/g, '');
   if (ascii && /[a-zA-Z]/.test(ascii)) return ascii.toLowerCase();
-  return `feat_${Buffer.from(feature).toString('hex').slice(0, 8)}`;
+  // 对整个名字取 SHA-1 前 8 位（原先取 UTF-8 前 4 字节，首字相同的功能会撞号）
+  return `feat_${createHash('sha1').update(feature).digest('hex').slice(0, 8)}`;
 }
 
 /** 产物目录名：与功能 slug 一致（不再附加时间戳） */
