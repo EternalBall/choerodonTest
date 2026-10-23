@@ -61,7 +61,15 @@ export function delegateChat(
   }
   if (r.status !== 0) throw new Error(`bird-delegate 退出码 ${r.status}（通道 ${lane}）：${(r.stderr || r.stdout || '').slice(0, 300)}`);
 
-  const content = fs.existsSync(outFile) ? fs.readFileSync(outFile, 'utf8').trim() : (r.stdout || '').trim();
+  let content = fs.existsSync(outFile) ? fs.readFileSync(outFile, 'utf8').trim() : (r.stdout || '').trim();
+  if (payload.responseFormatJson) {
+    // 子 agent 偶尔在 JSON 前后加说明文字：截取首个 { 到末个 } 之间的内容
+    const a = content.indexOf('{');
+    const b = content.lastIndexOf('}');
+    if (a > 0 || (b >= 0 && b < content.length - 1)) {
+      if (a >= 0 && b > a) content = content.slice(a, b + 1);
+    }
+  }
   if (!content) throw new Error(`子 agent 应答为空（通道 ${lane}），请求文件：${requestFile}`);
   if (payload.responseFormatJson) {
     try {
