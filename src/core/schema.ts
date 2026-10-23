@@ -429,6 +429,56 @@ export const FieldFactSchema = z.object({
   attrs: z.record(FactValueSchema),
 });
 
+/** 静态提取的页面结构模型：表单/字段/页签/按钮/抽屉/表格，确定性产出 */
+export const PageModelFieldSchema = z.object({
+  name: z.string(),
+  control: z.string(),
+  /** JSX 上的白名单属性，值为字面量或表达式原文 */
+  props: z.record(z.string()).optional(),
+  /** 数据集（DS）里该字段的静态事实 */
+  ds_attrs: z.record(FactValueSchema).optional(),
+  /** 其他字段的值影响本字段（必填/禁用/值集参数）：表达式里引用到的字段名 */
+  depends_on: z.array(z.string()).optional(),
+  /** 本字段由其他字段带出（bind） */
+  derived_from: z.array(z.string()).optional(),
+});
+export const PageModelSchema = z.object({
+  forms: z.array(
+    z.object({
+      id: z.string(),
+      file: z.string(),
+      container: z.string(),
+      ds: z.string().optional(),
+      disabled: z.string().optional(),
+      fields: z.array(PageModelFieldSchema),
+    }),
+  ),
+  tabs: z.array(z.object({ id: z.string(), key: z.string(), title: z.string().optional(), file: z.string() })),
+  buttons: z.array(
+    z.object({
+      id: z.string(),
+      tag: z.string(),
+      text: z.string().optional(),
+      icon: z.string().optional(),
+      on_click: z.string().optional(),
+      disabled: z.string().optional(),
+      permission: z.string().optional(),
+      container: z.string(),
+      file: z.string(),
+    }),
+  ),
+  drawers: z.array(z.object({ id: z.string(), title: z.string().optional(), file: z.string() })),
+  tables: z.array(
+    z.object({
+      id: z.string(),
+      file: z.string(),
+      ds: z.string().optional(),
+      columns: z.array(z.object({ name: z.string(), editor: z.boolean() })),
+    }),
+  ),
+});
+export type PageModel = z.infer<typeof PageModelSchema>;
+
 export const FeatureArtifactSchema = z.object({
   feature: z.string(),
   entry: z.object({
@@ -449,6 +499,8 @@ export const FeatureArtifactSchema = z.object({
   validations: z.array(ValidationRuleSchema).optional(),
   /** 源码静态提取的字段事实（确定性，analyze 后写入；旧产物缺省） */
   field_facts: z.array(FieldFactSchema).optional(),
+  /** 源码静态提取的页面结构模型（表单/字段/页签/按钮/抽屉/表格） */
+  page_model: PageModelSchema.optional(),
   /** 分析输入（源码片段）的哈希；与基线相同则直接复用基线，不再调 LLM */
   source_hash: z.string().optional(),
   review_suggestions: ReviewSuggestionsSchema.optional(),

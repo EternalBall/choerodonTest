@@ -5,6 +5,7 @@ import { loadPlaybooksForSources } from '../knowledge/loadPlaybooks.js';
 import { loadFeatureElementsOverlay, loadPlatformKit } from '../knowledge/platformKit.js';
 import { compileMetaOpsAndFlows } from './compileFlows.js';
 import { retrieveFeatureCode } from './retrieve.js';
+import { extractPageModel } from './pageModel.js';
 import { extractFieldFacts, extractRenderedEditableFields } from './staticExtract.js';
 import { anchorToBaseline, formatBaselineForPrompt, loadBaselineArtifact, pruneUnrenderedFields } from './baselineAnchor.js';
 import { llmAnalyzeFeature } from './llmAnalyze.js';
@@ -53,7 +54,8 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
   if (base) logger.info({ operations: base.operations.length }, '使用基线锚定分析');
   if (base?.source_hash === sourceHash && base.flows?.length) {
     logger.info({ sourceHash }, '源码与基线一致，直接复用基线分析结果（未调用 LLM）');
-    return { ...base, field_facts: extractFieldFacts(snippets) };
+    const facts = extractFieldFacts(snippets);
+    return { ...base, field_facts: facts, page_model: extractPageModel(snippets, facts) };
   }
   let raw = await llmAnalyzeFeature({
     feature: opts.feature,
@@ -85,6 +87,7 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
   }
   // 字段事实由 AST 确定性提取，不让 LLM 参与，保证同源码两次分析结果一致
   artifact.field_facts = extractFieldFacts(snippets);
+  artifact.page_model = extractPageModel(snippets, artifact.field_facts);
   artifact.source_hash = sourceHash;
   logger.info(
     {

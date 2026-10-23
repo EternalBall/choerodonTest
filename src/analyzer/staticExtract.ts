@@ -14,7 +14,7 @@ const ENUM_OBJECT = /^Field[A-Z]\w*$/;
 
 const ANONYMOUS_DS = '(anonymous)';
 
-function scriptKind(file: string): ts.ScriptKind | undefined {
+export function scriptKind(file: string): ts.ScriptKind | undefined {
   switch (path.extname(file).toLowerCase()) {
     case '.ts':
       return ts.ScriptKind.TS;
@@ -30,11 +30,11 @@ function scriptKind(file: string): ts.ScriptKind | undefined {
 }
 
 /** 压缩空白并截断：同一表达式换行/缩进变化不应造成 diff 噪音 */
-function compactExpr(node: ts.Node, sf: ts.SourceFile): string {
+export function compactExpr(node: ts.Node, sf: ts.SourceFile): string {
   return node.getText(sf).replace(/\s+/g, ' ').trim().slice(0, EXPR_MAX_CHARS);
 }
 
-function propName(name: ts.PropertyName, sf: ts.SourceFile): string {
+export function propName(name: ts.PropertyName, sf: ts.SourceFile): string {
   if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)) {
     return name.text;
   }
@@ -42,7 +42,7 @@ function propName(name: ts.PropertyName, sf: ts.SourceFile): string {
   return name.getText(sf);
 }
 
-function unwrap(node: ts.Expression): ts.Expression {
+export function unwrap(node: ts.Expression): ts.Expression {
   let cur = node;
   while (
     ts.isParenthesizedExpression(cur) ||
@@ -57,7 +57,7 @@ function unwrap(node: ts.Expression): ts.Expression {
 }
 
 /** intl.get('key').d('默认中文') → '默认中文'；非该形态返回 undefined */
-function intlDefault(node: ts.Expression): string | undefined {
+export function intlDefault(node: ts.Expression): string | undefined {
   if (!ts.isCallExpression(node)) return undefined;
   const callee = node.expression;
   if (!ts.isPropertyAccessExpression(callee) || callee.name.text !== 'd') return undefined;
@@ -89,7 +89,7 @@ function evalObject(node: ts.ObjectLiteralExpression, sf: ts.SourceFile): { [k: 
 }
 
 /** 按规则把 AST 表达式转成 FactValue */
-function evalValue(raw: ts.Expression, sf: ts.SourceFile): FactValue {
+export function evalValue(raw: ts.Expression, sf: ts.SourceFile): FactValue {
   const node = unwrap(raw);
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
   if (ts.isNumericLiteral(node)) return Number(node.text);
@@ -126,7 +126,7 @@ function declaredName(node: ts.Node): string | undefined {
   return undefined;
 }
 
-function fieldNameOf(obj: ts.ObjectLiteralExpression): string | undefined {
+export function fieldNameOf(obj: ts.ObjectLiteralExpression): string | undefined {
   for (const prop of obj.properties) {
     if (!ts.isPropertyAssignment(prop)) continue;
     const key = ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) ? prop.name.text : undefined;
