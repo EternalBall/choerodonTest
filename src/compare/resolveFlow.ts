@@ -7,6 +7,7 @@ import {
   summarizeEdits,
 } from './alignChain.js';
 import { deepEqual } from './deepEqual.js';
+import type { FormChange, PageModelDiff } from './diffPageModel.js';
 
 type Operation = z.infer<typeof OperationSchema>;
 
@@ -36,6 +37,22 @@ export type FlowChainDiff = {
   highlights: string[];
   /** 流程整条新增/删除可能只是分析波动（模型多拆/少拆），需结合源码确认 */
   unconfirmed?: boolean;
+  /** 步骤级变更树：步骤增删改；填表单类步骤下钻到字段 */
+  step_changes?: StepChange[];
+  /** 流程依赖的页面对象（页签/抽屉/表单）在新源码里已被删除：关联推断，需结合源码确认 */
+  stale_reasons?: string[];
+};
+
+export type StepChange = {
+  /** 语义 key：kind:api 或 kind:element，不随序号 / 步骤命名变化 */
+  key: string;
+  change: 'added' | 'removed' | 'modified';
+  /** modified 时：api / 表单字段集等 */
+  details?: string[];
+  /** 填表单类步骤关联到的表单及其字段级变更 */
+  form?: { id: string; fields: FormChange['fields'] };
+  /** 步骤依赖的页面对象（页签/按钮/抽屉/表单）已被删除：关联推断，需结合源码确认 */
+  stale_reason?: string;
 };
 
 /** 按 edges 拓扑展开节点顺序；无边则按 nodes 声明序 */
@@ -172,19 +189,19 @@ function stepFields(s: ResolvedFlowStep): string[] {
   return Array.isArray(f) ? f.filter((x): x is string => typeof x === 'string').sort() : [];
 }
 
-function stepFingerprint(s: ResolvedFlowStep, strict = false): string {
+function stepFingerprint(s: ResolvedFlowStep, strict = false, argFields = true): string {
   // 步骤内处理的字段集合（如 fill_form 的 fields）属于流程内容，稳定模式也比
-  const base = [s.meta_op_id, s.kind, s.api ?? '', stepFields(s).join(',')];
+  const base = [strict ? s.meta_op_id : stepKey(s), s.kind, s.api ?? '', argFields ? stepFields(s).join(',') : ''];
   if (strict) base.push(s.element ?? '', JSON.stringify(s.ready ?? null), JSON.stringify(s.args ?? null));
   return base.join('|');
 }
 
-function fieldDiffs(a: ResolvedFlowStep, b: ResolvedFlowStep, strict = false): string[] {
+function fieldDiffs(a: ResolvedFlowStep, b: ResolvedFlowStep, strict = false, argFields = true): string[] {
   const fieldChanges: string[] = [];
   if (a.kind !== b.kind) fieldChanges.push(`kind ${a.kind}→${b.kind}`);
   if (!deepEqual(a.api, b.api)) fieldChanges.push('api');
-  const fa = stepFields(a);
-  const fb = stepFields(b);
+  const fa = argFields ? stepFields(a) : [];
+  const fb = argFields ? stepFields(b) : [];
   const plus = fb.filter((x) => !fa.includes(x));
   const minus = fa.filter((x) => !fb.includes(x));
   if (plus.length) fieldChanges.push(`字段新增 ${plus.join(',')}`);
@@ -197,10 +214,16 @@ function fieldDiffs(a: ResolvedFlowStep, b: ResolvedFlowStep, strict = false): s
   return fieldChanges;
 }
 
+/** 语义步骤 key：动作 + 目标（接口优先，其次元素），不依赖序号和模型起的步骤名 */
+export function stepKey(s: ResolvedFlowStep): string {
+  return `${s.kind}:${s.api || s.element || ''}`;
+}
+
 /** 用 LCS 对齐步骤 id，生成短 highlights（避免按位「假替换」） */
-function chainHighlights(before: ResolvedFlowStep[], after: ResolvedFlowStep[], strict = false): string[] {
-  const seqBefore = before.map((s) => s.meta_op_id);
-  const seqAfter = after.map((s) => s.meta_op_id);
+function chainHighlights(before: ResolvedFlowStep[], after: ResolvedFlowStep[], strict = false, argFields = true): string[] {
+  const idOf = (s: ResolvedFlowStep) => (strict ? s.meta_op_id : stepKey(s));
+  const seqBefore = before.map(idOf);
+  const seqAfter = after.map(idOf);
   const edits = alignStepIds(seqBefore, seqAfter);
   const highlights: string[] = [];
 
@@ -212,26 +235,101 @@ function chainHighlights(before: ResolvedFlowStep[], after: ResolvedFlowStep[], 
   // 同 id 保留步：比对参数/接口等
   const afterById = new Map<string, ResolvedFlowStep[]>();
   for (const s of after) {
-    const list = afterById.get(s.meta_op_id) ?? [];
+    const list = afterById.get(idOf(s)) ?? [];
     list.push(s);
-    afterById.set(s.meta_op_id, list);
+    afterById.set(idOf(s), list);
   }
   const used = new Map<string, number>();
   for (const a of before) {
-    const list = afterById.get(a.meta_op_id);
+    const list = afterById.get(idOf(a));
     if (!list?.length) continue;
-    const idx = used.get(a.meta_op_id) ?? 0;
+    const idx = used.get(idOf(a)) ?? 0;
     const b = list[idx];
     if (!b) continue;
-    used.set(a.meta_op_id, idx + 1);
-    if (stepFingerprint(a, strict) === stepFingerprint(b, strict)) continue;
-    const diffs = fieldDiffs(a, b, strict);
+    used.set(idOf(a), idx + 1);
+    if (stepFingerprint(a, strict, argFields) === stepFingerprint(b, strict, argFields)) continue;
+    const diffs = fieldDiffs(a, b, strict, argFields);
     if (diffs.length) {
-      highlights.push(`「${a.meta_op_id}」变更：${diffs.join('、')}`);
+      highlights.push(`「${idOf(a)}」变更：${diffs.join('、')}`);
     }
   }
 
   return highlights;
+}
+
+
+type Model = { forms: { id: string; fields: { name: string }[] }[] } | undefined;
+
+/** 步骤级变更树：按语义 key（含出现序号）配对；填表单类步骤关联到表单并带出字段级变更 */
+function buildStepChanges(
+  before: ResolvedFlowStep[],
+  after: ResolvedFlowStep[],
+  pageDiff: PageModelDiff | undefined,
+  mb: Model,
+  ma: Model,
+  argFields: boolean,
+): StepChange[] {
+  const keyed = (steps: ResolvedFlowStep[]) => {
+    const n = new Map<string, number>();
+    return steps.map((s) => {
+      const k = stepKey(s);
+      const i = (n.get(k) ?? 0) + 1;
+      n.set(k, i);
+      return { k: i === 1 ? k : `${k}#${i}`, base: k, s };
+    });
+  };
+  const kb = keyed(before);
+  const ka = keyed(after);
+  const mapB = new Map(kb.map((x) => [x.k, x.s]));
+  const mapA = new Map(ka.map((x) => [x.k, x.s]));
+  const out: StepChange[] = [];
+  const linkForm = (names: string[]): FormChange | undefined => {
+    if (!pageDiff?.comparable || !names.length) return undefined;
+    let best: FormChange | undefined;
+    let bestN = 0;
+    for (const f of pageDiff.forms) {
+      const all = new Set([
+        ...(mb?.forms.find((x) => x.id === f.id)?.fields ?? []).map((x) => x.name),
+        ...(ma?.forms.find((x) => x.id === f.id)?.fields ?? []).map((x) => x.name),
+      ]);
+      const n = names.filter((x) => all.has(x)).length;
+      if (n > bestN) {
+        best = f;
+        bestN = n;
+      }
+    }
+    return best;
+  };
+  for (const { k, s } of kb) if (!mapA.has(k)) out.push({ key: k, change: 'removed' });
+  for (const { k, s } of ka) {
+    const b = mapB.get(k);
+    if (!b) {
+      out.push({ key: k, change: 'added' });
+      continue;
+    }
+    const details = fieldDiffs(b, s, false, argFields);
+    const names = [...new Set([...stepFields(b), ...stepFields(s)])];
+    const form = s.kind === 'fill_form' || b.kind === 'fill_form' ? linkForm(names) : undefined;
+    if (form?.fields.length) details.push('表单字段变更');
+    if (details.length || form?.fields.length) {
+      out.push({ key: k, change: 'modified', ...(details.length ? { details } : {}), ...(form ? { form: { id: form.id, fields: form.fields } } : {}) });
+    }
+  }
+  return out;
+}
+
+/** 已删除页签/抽屉/表单对应的流程：按名字关联推断 */
+function staleReasons(flowId: string, after: ResolvedFlowStep[], pageDiff: PageModelDiff | undefined): string[] {
+  if (!pageDiff?.comparable) return [];
+  const text = [flowId, ...after.flatMap((s) => [s.element ?? '', s.meta_op_id, s.name])].join(' ').toLowerCase().replace(/[_\s]/g, '');
+  const out: string[] = [];
+  const check = (kind: string, id: string, token: string) => {
+    const t = token.toLowerCase().replace(/[_\s]/g, '');
+    if (t.length >= 4 && text.includes(t)) out.push(`${kind} ${id} 已从源码移除`);
+  };
+  for (const t of pageDiff.tabs) if (t.change === 'removed') check('页签', t.id, t.id.split('/').pop() ?? '');
+  for (const d of pageDiff.drawers) if (d.change === 'removed') check('抽屉', d.id, (d.id.split('/').pop() ?? '').replace(/^_/, '').replace(/drawer$/i, ''));
+  return out;
 }
 
 /** 以完整流程链为主轴，对齐 before/after 的每条 flow */
@@ -239,6 +337,7 @@ export function diffFlowChains(
   beforeArtifact: FeatureArtifact,
   afterArtifact: FeatureArtifact,
   strict = false,
+  pageDiff?: PageModelDiff,
 ): FlowChainDiff[] {
   const beforeFlows = flowsForCompare(beforeArtifact);
   const afterFlows = flowsForCompare(afterArtifact);
@@ -280,28 +379,27 @@ export function diffFlowChains(
 
     const before = resolveFlowChain(left, beforeArtifact);
     const after = resolveFlowChain(right, afterArtifact);
+    // 页面结构模型可比时，表单字段以静态提取为准，不再看 LLM 写的 args.fields
+    const argFields = !pageDiff?.comparable;
     const same =
       before.length === after.length &&
-      before.every((s, i) => stepFingerprint(s, strict) === stepFingerprint(after[i]!, strict));
+      before.every((s, i) => stepFingerprint(s, strict, argFields) === stepFingerprint(after[i]!, strict, argFields));
     const title = right.title || left.title;
-    if (same) {
-      out.push({
-        id,
-        title,
-        change_type: 'unchanged',
-        before,
-        after,
-        highlights: [],
-      });
+    const stepChanges = strict ? [] : buildStepChanges(before, after, pageDiff, beforeArtifact.page_model, afterArtifact.page_model, argFields);
+    const stale = staleReasons(id, after, pageDiff);
+    const extra = {
+      ...(stepChanges.length ? { step_changes: stepChanges } : {}),
+      ...(stale.length ? { stale_reasons: stale } : {}),
+    };
+    if (same && !stepChanges.length && !stale.length) {
+      out.push({ id, title, change_type: 'unchanged', before, after, highlights: [] });
     } else {
-      out.push({
-        id,
-        title,
-        change_type: 'modified',
-        before,
-        after,
-        highlights: chainHighlights(before, after, strict),
-      });
+      const hl = same ? [] : chainHighlights(before, after, strict, argFields);
+      for (const c of stepChanges) {
+        if (c.form) hl.push(`步骤「${c.key}」表单 ${c.form.id}：${c.form.fields.map((f) => `${f.change === 'added' ? '+' : f.change === 'removed' ? '-' : '~'}${f.name}`).join(' ')}`);
+      }
+      for (const r of stale) hl.push(`关联推断：${r}`);
+      out.push({ id, title, change_type: 'modified', before, after, highlights: hl, ...extra });
     }
   }
 

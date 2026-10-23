@@ -4,6 +4,7 @@ import type { z } from 'zod';
 import { deepEqual } from './deepEqual.js';
 import { diffFieldFacts, diffRuleLists, type FieldDiffItem, type ListDiffItem } from './diffFields.js';
 import { diffFlowChains, type FlowChainDiff } from './resolveFlow.js';
+import { diffPageModel, pageModelChanged, type PageModelDiff } from './diffPageModel.js';
 
 type Operation = z.infer<typeof OperationSchema>;
 
@@ -32,6 +33,8 @@ export type ArtifactDiff = {
   field_rules_items: ListDiffItem[];
   validations_items: ListDiffItem[];
   page_states_items: ListDiffItem[];
+  /** 页面结构（表单/字段/页签/按钮/抽屉/表格）静态模型的逐项 diff */
+  page_model: PageModelDiff;
 };
 
 const OP_COMPARE_FIELDS = [
@@ -110,7 +113,8 @@ export function diffFeatureArtifacts(
   });
 
   const meta_ops = diffById(before.meta_ops, after.meta_ops);
-  const flow_chains = diffFlowChains(before, after, strict);
+  const page_model = diffPageModel(before.page_model, after.page_model);
+  const flow_chains = diffFlowChains(before, after, strict, page_model);
 
   const flowsBase = diffById(before.flows, after.flows);
   const sequenceChanged: ArtifactDiff['flows']['sequenceChanged'] = [];
@@ -148,6 +152,7 @@ export function diffFeatureArtifacts(
     field_rules_items: lists.field_rules,
     validations_items: lists.validations,
     page_states_items: lists.page_states,
+    page_model,
   };
 }
 
@@ -155,6 +160,7 @@ export function diffFeatureArtifacts(
 export function artifactLogicChanged(diff: ArtifactDiff): boolean {
   if (diff.flow_chains.some((c) => c.change_type !== 'unchanged')) return true;
   if (diff.operations.added.length || diff.operations.removed.length) return true;
+  if (pageModelChanged(diff.page_model)) return true;
   if (diff.entry.changed || diff.field_facts.length || diff.field_rules_items.length) return true;
   if (!diff.strict) return false;
   // strict：自由取值（描述、元操作参数、状态词、校验与页面状态）也算变化

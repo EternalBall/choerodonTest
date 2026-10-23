@@ -16,11 +16,24 @@ const mk = (over: Record<string, unknown>) =>
 test('稳定模式：元素名/args/状态词/note 变化不算逻辑变更', () => {
   const before = mk({});
   const after = mk({
-    meta_ops: [{ id: 'm1', name: 'm1', kind: 'click', element: 'b', args: { v: 2 } }],
+    meta_ops: [{ id: 'm1', name: 'm1', kind: 'click', element: 'a', args: { v: 2 } }],
     field_rules: [{ name: 'f', control: 'input', editable_when: ['drawer_edit'], note: 'b' }],
   });
   assert.equal(artifactLogicChanged(diffFeatureArtifacts(before, after)), false);
   assert.equal(artifactLogicChanged(diffFeatureArtifacts(before, after, { strict: true })), true);
+});
+
+test('步骤语义 key：改元素算步骤增删，改步骤 id 不算', () => {
+  const before = mk({});
+  const renamedId = mk({
+    meta_ops: [{ id: 'zz', name: 'zz', kind: 'click', element: 'a' }],
+    flows: [{ id: 'save', title: 't', source: 'default', nodes: [{ id: 'n0', meta_op_id: 'zz' }], edges: [] }],
+  });
+  assert.equal(diffFeatureArtifacts(before, renamedId).flow_chains[0]!.change_type, 'unchanged');
+  const otherEl = mk({ meta_ops: [{ id: 'm1', name: 'm1', kind: 'click', element: 'b' }] });
+  const c = diffFeatureArtifacts(before, otherEl).flow_chains[0]!;
+  assert.equal(c.change_type, 'modified');
+  assert.deepEqual(c.step_changes!.map((x) => [x.key, x.change]), [['click:a', 'removed'], ['click:b', 'added']]);
 });
 
 test('稳定模式：字段增删与控件类型变化仍能检出', () => {

@@ -2,7 +2,8 @@ import type { FeatureArtifact } from '../core/schema.js';
 import type { ArtifactDiff } from './diffArtifact.js';
 import type { FieldDiffItem, ListDiffItem } from './diffFields.js';
 import type { SuiteCaseDiff } from './diffSuite.js';
-import type { FlowChainDiff, ResolvedFlowStep } from './resolveFlow.js';
+import type { FlowChainDiff, ResolvedFlowStep, StepChange } from './resolveFlow.js';
+import type { PageModelDiff } from './diffPageModel.js';
 import type { OperationSchema } from '../core/schema.js';
 import type { z } from 'zod';
 
@@ -40,9 +41,13 @@ export type CompareDiffDocument = {
     /** 整条流程新增/删除，可能只是分析波动，需结合源码确认 */
     unconfirmed?: boolean;
     highlights: string[];
+    step_changes?: StepChange[];
+    stale_reasons?: string[];
     before: DiffFlowStep[];
     after: DiffFlowStep[];
   }>;
+  /** 页面结构变更：表单/字段/页签/按钮/抽屉/表格（静态提取，确定性）；基线缺模型时 comparable=false */
+  structure?: PageModelDiff;
   /** 辅轴：能力摘要变更（简要） */
   operations?: {
     added: Array<{ id: string; name: string }>;
@@ -103,6 +108,8 @@ export function buildDiffYaml(opts: {
     change_type: c.change_type,
     ...(c.unconfirmed ? { unconfirmed: true } : {}),
     highlights: c.highlights,
+    ...(c.step_changes ? { step_changes: c.step_changes } : {}),
+    ...(c.stale_reasons ? { stale_reasons: c.stale_reasons } : {}),
     before: c.before.map(slimStep),
     after: c.after.map(slimStep),
   }));
@@ -124,6 +131,11 @@ export function buildDiffYaml(opts: {
     },
     flows,
   };
+
+  const pm = opts.artifactDiff.page_model;
+  if (!pm.comparable || pm.forms.length || pm.tabs.length || pm.buttons.length || pm.drawers.length || pm.tables.length) {
+    doc.structure = pm;
+  }
 
   const op = opts.artifactDiff.operations;
   if (op.added.length || op.removed.length || op.changed.length) {
