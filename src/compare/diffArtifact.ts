@@ -15,6 +15,8 @@ export type IdDiff<T> = {
 };
 
 export type ArtifactDiff = {
+  /** true：连元素名/args/状态词等自由取值也比；默认 false（稳定模式） */
+  strict: boolean;
   operations: IdDiff<Operation>;
   meta_ops: IdDiff<MetaOp>;
   flows: IdDiff<Flow> & { sequenceChanged: { id: string; before: string[]; after: string[] }[] };
@@ -93,7 +95,12 @@ function diffById<T extends { id: string }>(
   return { added, removed, changed, unchanged };
 }
 
-export function diffFeatureArtifacts(before: FeatureArtifact, after: FeatureArtifact): ArtifactDiff {
+export function diffFeatureArtifacts(
+  before: FeatureArtifact,
+  after: FeatureArtifact,
+  opts?: { strict?: boolean },
+): ArtifactDiff {
+  const strict = opts?.strict ?? false;
   const operations = diffById(before.operations, after.operations, (op) => {
     const pick: Record<string, unknown> = {};
     for (const f of OP_COMPARE_FIELDS) {
@@ -103,7 +110,7 @@ export function diffFeatureArtifacts(before: FeatureArtifact, after: FeatureArti
   });
 
   const meta_ops = diffById(before.meta_ops, after.meta_ops);
-  const flow_chains = diffFlowChains(before, after);
+  const flow_chains = diffFlowChains(before, after, strict);
 
   const flowsBase = diffById(before.flows, after.flows);
   const sequenceChanged: ArtifactDiff['flows']['sequenceChanged'] = [];
@@ -117,9 +124,10 @@ export function diffFeatureArtifacts(before: FeatureArtifact, after: FeatureArti
   }
 
   const flows = { ...flowsBase, sequenceChanged };
-  const lists = diffRuleLists(before, after);
+  const lists = diffRuleLists(before, after, strict);
 
   return {
+    strict,
     operations,
     meta_ops,
     flows,
@@ -128,7 +136,7 @@ export function diffFeatureArtifacts(before: FeatureArtifact, after: FeatureArti
       changed: !deepEqual(before.page_states, after.page_states),
     },
     field_rules: {
-      changed: !deepEqual(before.field_rules, after.field_rules),
+      changed: strict ? !deepEqual(before.field_rules, after.field_rules) : lists.field_rules.length > 0,
     },
     validations: {
       changed: !deepEqual(before.validations, after.validations),
@@ -146,27 +154,13 @@ export function diffFeatureArtifacts(before: FeatureArtifact, after: FeatureArti
 /** 路径逻辑是否变更：以完整流程链为主，辅以能力/配套模型 */
 export function artifactLogicChanged(diff: ArtifactDiff): boolean {
   if (diff.flow_chains.some((c) => c.change_type !== 'unchanged')) return true;
-  if (diff.operations.added.length || diff.operations.removed.length || diff.operations.changed.length) {
-    return true;
-  }
-  if (diff.meta_ops.added.length || diff.meta_ops.removed.length || diff.meta_ops.changed.length) {
-    return true;
-  }
-  if (
-    diff.entry.changed ||
-    diff.page_states.changed ||
-    diff.field_rules.changed ||
-    diff.validations.changed
-  ) {
-    return true;
-  }
-  if (
-    diff.field_facts.length ||
-    diff.field_rules_items.length ||
-    diff.validations_items.length ||
-    diff.page_states_items.length
-  ) {
-    return true;
-  }
+  if (diff.operations.added.length || diff.operations.removed.length) return true;
+  if (diff.entry.changed || diff.field_facts.length || diff.field_rules_items.length) return true;
+  if (!diff.strict) return false;
+  // strict：自由取值（描述、元操作参数、状态词、校验与页面状态）也算变化
+  if (diff.operations.changed.length) return true;
+  if (diff.meta_ops.added.length || diff.meta_ops.removed.length || diff.meta_ops.changed.length) return true;
+  if (diff.page_states.changed || diff.field_rules.changed || diff.validations.changed) return true;
+  if (diff.validations_items.length || diff.page_states_items.length) return true;
   return false;
 }

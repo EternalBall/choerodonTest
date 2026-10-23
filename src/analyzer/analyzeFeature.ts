@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { logger } from '../core/logger.js';
 import type { FeatureArtifact } from '../core/schema.js';
 import { loadPlaybooksForSources } from '../knowledge/loadPlaybooks.js';
@@ -5,6 +6,7 @@ import { loadFeatureElementsOverlay, loadPlatformKit } from '../knowledge/platfo
 import { compileMetaOpsAndFlows } from './compileFlows.js';
 import { retrieveFeatureCode } from './retrieve.js';
 import { extractFieldFacts } from './staticExtract.js';
+import { anchorToBaseline, formatBaselineForPrompt, loadBaselineArtifact } from './baselineAnchor.js';
 import { llmAnalyzeFeature } from './llmAnalyze.js';
 import { locatePages, pickPageEntries } from './llmLocate.js';
 
@@ -13,6 +15,8 @@ export type AnalyzeOptions = {
   projectRoot: string;
   /** 功能源码目录：读取其下完整文件，优先于关键词检索 */
   featureDir?: string;
+  /** 基线标签（默认 v1，存在才启用）；false 表示不锚定 */
+  baseline?: string | false;
 };
 
 /** 目录模式读的是完整文件，默认 80k 上限不够，放宽到 400k */
@@ -40,12 +44,25 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
         playbookIds: playbooks.map((p) => p.id),
       })
     : null;
-  const raw = await llmAnalyzeFeature({
+  // 分析输入（源码片段 + 手册）哈希：与基线一致说明源码没变，直接复用基线，避免 LLM 重新作答带来的波动
+  const sourceHash = createHash('sha256')
+    .update(JSON.stringify([snippets.map((s) => [s.relativePath, s.content]), playbooks.map((p) => p.id)]))
+    .digest('hex')
+    .slice(0, 16);
+  const base = opts.baseline === false ? undefined : await loadBaselineArtifact(opts.feature, opts.baseline ?? 'v1');
+  if (base) logger.info({ operations: base.operations.length }, '使用基线锚定分析');
+  if (base?.source_hash === sourceHash && base.flows?.length) {
+    logger.info({ sourceHash }, '源码与基线一致，直接复用基线分析结果（未调用 LLM）');
+    return { ...base, field_facts: extractFieldFacts(snippets) };
+  }
+  let raw = await llmAnalyzeFeature({
     feature: opts.feature,
     snippets,
     playbooks,
     maxTotalChars: opts.featureDir ? FEATURE_DIR_MAX_TOTAL_CHARS : undefined,
+    baselineBlock: base ? formatBaselineForPrompt(base) : undefined,
   });
+  if (base) raw = anchorToBaseline(raw, base).artifact;
   const knownElements = [
     ...Object.keys(await loadPlatformKit()),
     ...Object.keys(await loadFeatureElementsOverlay(opts.feature)),
@@ -67,6 +84,7 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
   }
   // 字段事实由 AST 确定性提取，不让 LLM 参与，保证同源码两次分析结果一致
   artifact.field_facts = extractFieldFacts(snippets);
+  artifact.source_hash = sourceHash;
   logger.info(
     {
       feature: opts.feature,

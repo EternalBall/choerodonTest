@@ -34,6 +34,8 @@ export type FlowChainDiff = {
   after: ResolvedFlowStep[];
   /** 人类可读的节点级变更要点（供报告/LLM，宜短） */
   highlights: string[];
+  /** 流程整条新增/删除可能只是分析波动（模型多拆/少拆），需结合源码确认 */
+  unconfirmed?: boolean;
 };
 
 /** 按 edges 拓扑展开节点顺序；无边则按 nodes 声明序 */
@@ -161,29 +163,30 @@ export function resolveFlowChain(
   });
 }
 
-function stepFingerprint(s: ResolvedFlowStep): string {
-  return [
-    s.meta_op_id,
-    s.kind,
-    s.element ?? '',
-    s.api ?? '',
-    JSON.stringify(s.ready ?? null),
-    JSON.stringify(s.args ?? null),
-  ].join('|');
+/**
+ * 步骤指纹。默认（稳定模式）只看 步骤 id / 类型 / 接口：元素名、args、ready 是模型起的名字或参数，
+ * 同一份源码两次分析也会不同；strict 才把它们算进来。
+ */
+function stepFingerprint(s: ResolvedFlowStep, strict = false): string {
+  const base = [s.meta_op_id, s.kind, s.api ?? ''];
+  if (strict) base.push(s.element ?? '', JSON.stringify(s.ready ?? null), JSON.stringify(s.args ?? null));
+  return base.join('|');
 }
 
-function fieldDiffs(a: ResolvedFlowStep, b: ResolvedFlowStep): string[] {
+function fieldDiffs(a: ResolvedFlowStep, b: ResolvedFlowStep, strict = false): string[] {
   const fieldChanges: string[] = [];
   if (a.kind !== b.kind) fieldChanges.push(`kind ${a.kind}→${b.kind}`);
-  if (!deepEqual(a.element, b.element)) fieldChanges.push('element');
   if (!deepEqual(a.api, b.api)) fieldChanges.push('api');
-  if (!deepEqual(a.ready, b.ready)) fieldChanges.push('ready');
-  if (!deepEqual(a.args, b.args)) fieldChanges.push('args');
+  if (strict) {
+    if (!deepEqual(a.element, b.element)) fieldChanges.push('element');
+    if (!deepEqual(a.ready, b.ready)) fieldChanges.push('ready');
+    if (!deepEqual(a.args, b.args)) fieldChanges.push('args');
+  }
   return fieldChanges;
 }
 
 /** 用 LCS 对齐步骤 id，生成短 highlights（避免按位「假替换」） */
-function chainHighlights(before: ResolvedFlowStep[], after: ResolvedFlowStep[]): string[] {
+function chainHighlights(before: ResolvedFlowStep[], after: ResolvedFlowStep[], strict = false): string[] {
   const seqBefore = before.map((s) => s.meta_op_id);
   const seqAfter = after.map((s) => s.meta_op_id);
   const edits = alignStepIds(seqBefore, seqAfter);
@@ -209,8 +212,8 @@ function chainHighlights(before: ResolvedFlowStep[], after: ResolvedFlowStep[]):
     const b = list[idx];
     if (!b) continue;
     used.set(a.meta_op_id, idx + 1);
-    if (stepFingerprint(a) === stepFingerprint(b)) continue;
-    const diffs = fieldDiffs(a, b);
+    if (stepFingerprint(a, strict) === stepFingerprint(b, strict)) continue;
+    const diffs = fieldDiffs(a, b, strict);
     if (diffs.length) {
       highlights.push(`「${a.meta_op_id}」变更：${diffs.join('、')}`);
     }
@@ -223,6 +226,7 @@ function chainHighlights(before: ResolvedFlowStep[], after: ResolvedFlowStep[]):
 export function diffFlowChains(
   beforeArtifact: FeatureArtifact,
   afterArtifact: FeatureArtifact,
+  strict = false,
 ): FlowChainDiff[] {
   const beforeFlows = flowsForCompare(beforeArtifact);
   const afterFlows = flowsForCompare(afterArtifact);
@@ -243,6 +247,7 @@ export function diffFlowChains(
         before: [],
         after,
         highlights: [`新增：${formatChain(after.map((s) => s.meta_op_id))}`],
+        unconfirmed: true,
       });
       continue;
     }
@@ -255,6 +260,7 @@ export function diffFlowChains(
         before,
         after: [],
         highlights: [`移除：${formatChain(before.map((s) => s.meta_op_id))}`],
+        unconfirmed: true,
       });
       continue;
     }
@@ -264,7 +270,7 @@ export function diffFlowChains(
     const after = resolveFlowChain(right, afterArtifact);
     const same =
       before.length === after.length &&
-      before.every((s, i) => stepFingerprint(s) === stepFingerprint(after[i]!));
+      before.every((s, i) => stepFingerprint(s, strict) === stepFingerprint(after[i]!, strict));
     const title = right.title || left.title;
     if (same) {
       out.push({
@@ -282,7 +288,7 @@ export function diffFlowChains(
         change_type: 'modified',
         before,
         after,
-        highlights: chainHighlights(before, after),
+        highlights: chainHighlights(before, after, strict),
       });
     }
   }

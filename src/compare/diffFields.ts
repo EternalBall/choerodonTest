@@ -26,6 +26,8 @@ export type RuleListsDiff = {
   page_states: ListDiffItem[];
 };
 
+const FREE_TEXT_ATTRS = new Set(['note', 'evidence', 'description']);
+
 const byKey = (a: { key: string }, b: { key: string }) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
 
 /** 属性并集按字母序，缺失一侧记 undefined，保证输出稳定 */
@@ -33,7 +35,10 @@ function diffAttrs(
   before: Record<string, unknown> | undefined,
   after: Record<string, unknown> | undefined,
 ): FieldAttrDiff[] {
-  const keys = [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])].sort();
+  // note / evidence / description 是模型写的自由文本，每次措辞都可能不同，不算“属性变化”
+  const keys = [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])]
+    .filter((k) => !FREE_TEXT_ATTRS.has(k))
+    .sort();
   const out: FieldAttrDiff[] = [];
   for (const attr of keys) {
     const b = before?.[attr];
@@ -114,12 +119,37 @@ function diffList<T extends object>(
 }
 
 /** field_rules 以 name 为键（同名多条加 #序号）；validations / page_states 以 id 为键 */
+/**
+ * 稳定模式下字段规则只比这些属性：
+ * - editable_when / readonly_when 的取值是模型起的状态名（如 detail_edit / bom_drawer_open），同源码两次分析也会不同；
+ * - label 模型有时漏写，只在两侧都有时才算变化。
+ * strict 才全比。
+ */
+const STABLE_RULE_ATTRS = new Set(['control', 'required', 'label', 'row_gate', 'name']);
+
+function stableRuleItems(items: ListDiffItem[]): ListDiffItem[] {
+  const out: ListDiffItem[] = [];
+  for (const it of items) {
+    if (it.change !== 'changed') {
+      out.push({ ...it, attrs: it.attrs.filter((a) => STABLE_RULE_ATTRS.has(a.attr)) });
+      continue;
+    }
+    const attrs = it.attrs.filter(
+      (a) => STABLE_RULE_ATTRS.has(a.attr) && !(a.attr === 'label' && (a.before === undefined || a.after === undefined)),
+    );
+    if (attrs.length) out.push({ ...it, attrs });
+  }
+  return out;
+}
+
 export function diffRuleLists(
   before: Pick<FeatureArtifact, 'field_rules' | 'validations' | 'page_states'>,
   after: Pick<FeatureArtifact, 'field_rules' | 'validations' | 'page_states'>,
+  strict = false,
 ): RuleListsDiff {
+  const fieldRules = diffList(before.field_rules, after.field_rules, (r) => r.name, true);
   return {
-    field_rules: diffList(before.field_rules, after.field_rules, (r) => r.name, true),
+    field_rules: strict ? fieldRules : stableRuleItems(fieldRules),
     validations: diffList(before.validations, after.validations, (r) => r.id),
     page_states: diffList(before.page_states, after.page_states, (r) => r.id),
   };

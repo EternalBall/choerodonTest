@@ -961,7 +961,9 @@ function isRowEditDelete(op: Operation, hasRowGate: boolean): boolean {
 }
 
 /** 模型步骤 → DraftStep；goto/filter_query 按页去重复用，其余按操作隔离 */
-function llmDraft(op: Operation, s: ValidatedStep, i: number): DraftStep {
+function llmDraft(op: Operation, s: ValidatedStep, i: number, fallbackPageId?: string): DraftStep {
+  // 模型漏写 page_id 时沿用前序步骤所在页，保证 id 稳定（否则落成 filter_query_main，两次分析不一致）
+  if (!s.page_id && fallbackPageId) s = { ...s, page_id: fallbackPageId };
   const id =
     s.kind === 'goto' || s.kind === 'filter_query'
       ? `${s.kind}_${s.page_id ?? 'main'}`
@@ -1023,9 +1025,12 @@ export function compileMetaOpsAndFlows(
     if (op.steps?.length) {
       const v = validateOperationSteps(op, artifact, known);
       if (v.ok) {
-        drafts = v.steps.map((s, i) =>
-          s.kind === 'goto' ? draftGoto(s.page_id!, pages, op, entryRoute) : llmDraft(op, s, i),
-        );
+        let lastPage: string | undefined;
+        drafts = v.steps.map((s, i) => {
+          const d = s.kind === 'goto' ? draftGoto(s.page_id!, pages, op, entryRoute) : llmDraft(op, s, i, lastPage);
+          lastPage = d.page_id ?? lastPage;
+          return d;
+        });
         stepSource = 'llm_steps';
       } else {
         for (const it of v.issues) {

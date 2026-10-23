@@ -449,6 +449,8 @@ export const FeatureArtifactSchema = z.object({
   validations: z.array(ValidationRuleSchema).optional(),
   /** 源码静态提取的字段事实（确定性，analyze 后写入；旧产物缺省） */
   field_facts: z.array(FieldFactSchema).optional(),
+  /** 分析输入（源码片段）的哈希；与基线相同则直接复用基线，不再调 LLM */
+  source_hash: z.string().optional(),
   review_suggestions: ReviewSuggestionsSchema.optional(),
   sources: z.array(z.string()).default([]),
   confidence: z.number().min(0).max(1).default(0.5),

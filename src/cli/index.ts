@@ -115,12 +115,15 @@ program
   .requiredOption('-f, --feature <name>', '功能名，如 Material / 物料维护')
   .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)
   .option('-d, --dir <path>', '功能源码目录，读取该目录下完整文件，优先于关键词检索')
-  .action(async (opts: { feature: string; project: string; dir?: string }) => {
+  .option('--baseline <label>', '用该基线锚定分析 id 与结构（默认 v1，存在才启用）')
+  .option('--no-baseline', '不使用基线锚定')
+  .action(async (opts: { feature: string; project: string; dir?: string; baseline?: string | boolean }) => {
     await ensureDirs();
     console.warn('\n提示: analyze 已合并到 gen，推荐: pnpm ata gen -f ... -p ...\n');
     const outputSlug = await resolveOutputSlugForFeature(opts.feature);
     const artifact = await analyzeFeatureFromSource(opts.feature, opts.project, {
       featureDir: opts.dir,
+      baseline: opts.baseline === false ? false : typeof opts.baseline === 'string' ? opts.baseline : undefined,
     });
     const result = await runGenPipeline({
       artifact,
@@ -449,12 +452,14 @@ program
   .option('--ata <featureDir>', '基线改取目标项目该功能目录下 ata/ 的已确认版本（配合 -p）')
   .option('-p, --project <path>', '被测前端源码根目录（仅 --ata 使用）', TARGET_PROJECT_DEFAULT)
   .option('--list', '列出已有基线')
+  .option('--strict', '连元素名/args/状态词等自由取值也比（默认只比稳定属性）')
   .action(async (opts: {
     feature: string;
     baseline?: string;
     ata?: string;
     project: string;
     list?: boolean;
+    strict?: boolean;
   }) => {
     await ensureDirs();
     const { slug } = await resolveFeatureContext(opts.feature);
@@ -476,6 +481,7 @@ program
       feature: opts.feature,
       baselineLabel: opts.baseline,
       ata: opts.ata ? { projectRoot: opts.project, featureDir: opts.ata } : undefined,
+      strict: opts.strict,
     });
     console.log(`\n✓ 差异 YAML: ${result.latestDiffFile}`);
     console.log(`  归档: ${result.diffFile}`);

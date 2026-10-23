@@ -37,6 +37,8 @@ export type CompareDiffDocument = {
     id: string;
     title: string;
     change_type: FlowChainDiff['change_type'];
+    /** 整条流程新增/删除，可能只是分析波动，需结合源码确认 */
+    unconfirmed?: boolean;
     highlights: string[];
     before: DiffFlowStep[];
     after: DiffFlowStep[];
@@ -99,6 +101,7 @@ export function buildDiffYaml(opts: {
     id: c.id,
     title: c.title,
     change_type: c.change_type,
+    ...(c.unconfirmed ? { unconfirmed: true } : {}),
     highlights: c.highlights,
     before: c.before.map(slimStep),
     after: c.after.map(slimStep),

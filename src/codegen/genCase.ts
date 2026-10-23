@@ -120,7 +120,7 @@ export async function runGenPipeline(opts: {
 export async function analyzeFeatureFromSource(
   feature: string,
   projectRoot: string,
-  opts?: { featureDir?: string },
+  opts?: { featureDir?: string; baseline?: string | false },
 ): Promise<FeatureArtifact> {
-  return analyzeFeature({ feature, projectRoot, featureDir: opts?.featureDir });
+  return analyzeFeature({ feature, projectRoot, featureDir: opts?.featureDir, baseline: opts?.baseline });
 }

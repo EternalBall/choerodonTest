@@ -31,6 +31,8 @@ export async function runCompare(opts: {
    * 而不是 artifacts/<slug>/v1。未指定时行为与原来完全一致。
    */
   ata?: { projectRoot: string; featureDir: string };
+  /** 连元素名/args/状态词等自由取值也比（默认只比稳定属性） */
+  strict?: boolean;
 }): Promise<{
   diffFile: string;
   latestDiffFile: string;
@@ -86,7 +88,7 @@ export async function runCompare(opts: {
     afterSuite = undefined;
   }
 
-  const artifactDiff = diffFeatureArtifacts(beforeArtifact, afterArtifact);
+  const artifactDiff = diffFeatureArtifacts(beforeArtifact, afterArtifact, { strict: opts.strict });
   const suiteDiff = diffSuites(beforeSuite, afterSuite);
   const logicChanged = artifactLogicChanged(artifactDiff);
   const suiteChanged =

@@ -351,6 +351,8 @@ export async function llmAnalyzeFeature(opts: {
   /** prompt 中代码总字符上限；缺省沿用 formatSnippetsForPrompt 默认值 */
   maxTotalChars?: number;
   playbooks?: PlaybookDoc[];
+  /** 基线骨架（提示词块）：要求未变化处沿用基线 id 与结构 */
+  baselineBlock?: string;
 }): Promise<FeatureArtifact> {
   const codeBlock = formatSnippetsForPrompt(opts.snippets, opts.maxTotalChars);
 
@@ -377,7 +379,7 @@ export async function llmAnalyzeFeature(opts: {
       { role: 'system', content: SYSTEM_PROMPT },
       {
         role: 'user',
-        content: `功能关键词: ${opts.feature}\n\n${playbookBlock}\n\n请结合上述 Playbooks 与下列源码，严格按示例 JSON 结构输出路径描述：\n\n${codeBlock}`,
+        content: `功能关键词: ${opts.feature}\n\n${playbookBlock}\n\n请结合上述 Playbooks 与下列源码，严格按示例 JSON 结构输出路径描述：\n\n${codeBlock}${opts.baselineBlock ? `\n\n${opts.baselineBlock}` : ''}`,
       },
     ],
     responseFormatJson: true,
