@@ -357,6 +357,7 @@ function staleReasons(flowId: string, after: ResolvedFlowStep[], pageDiff: PageM
     if (t.length >= 4 && text.includes(t)) out.push(`${kind} ${id} 已从源码移除`);
   };
   for (const t of pageDiff.tabs) if (t.change === 'removed') check('页签', t.id, t.id.split('/').pop() ?? '');
+  for (const p of pageDiff.panels) if (p.change === 'removed') check('面板', p.id, p.id.split('/').pop() ?? '');
   for (const d of pageDiff.drawers) if (d.change === 'removed') check('抽屉', d.id, (d.id.split('/').pop() ?? '').replace(/^_/, '').replace(/drawer$/i, ''));
   return out;
 }

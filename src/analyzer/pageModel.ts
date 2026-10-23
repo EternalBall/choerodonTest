@@ -205,7 +205,8 @@ export function extractPageModel(
           const onClick = attrs.get('onClick')?.text;
           const perm = attrs.get('permissionList')?.text.match(/code:\s*([^,}]+)/)?.[1]?.trim();
           buttons.push({
-            id: `${base(file)}/${next}/${text ?? icon ?? onClick ?? tag}`,
+            // 身份取图标/处理函数名，文案只是属性：按钮改名不会变成“删一个加一个”
+            id: `${base(file)}/${next}/${icon ?? (onClick && onClick.length <= 40 ? onClick : undefined) ?? text ?? tag}`,
             tag,
             ...(text ? { text } : {}),
             ...(icon ? { icon } : {}),
