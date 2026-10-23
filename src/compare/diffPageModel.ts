@@ -3,7 +3,13 @@ import { deepEqual } from './deepEqual.js';
 
 export type AttrDiff = { attr: string; before: unknown; after: unknown };
 export type FieldChange = { name: string; change: 'added' | 'removed' | 'changed'; attrs: AttrDiff[] };
-export type ObjectChange = { id: string; change: 'added' | 'removed' | 'changed'; attrs: AttrDiff[] };
+export type ObjectChange = {
+  id: string;
+  change: 'added' | 'removed' | 'changed';
+  attrs: AttrDiff[];
+  /** 供流程步骤关联推断用的名字线索（按钮的图标、点击处理函数名） */
+  hints?: string[];
+};
 export type FormChange = {
   id: string;
   change: 'added' | 'removed' | 'changed';
@@ -19,6 +25,7 @@ export type PageModelDiff = {
   buttons: ObjectChange[];
   drawers: ObjectChange[];
   tables: ObjectChange[];
+  panels: ObjectChange[];
 };
 
 const sortKey = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -64,18 +71,25 @@ function diffFields(before: Field[], after: Field[]): FieldChange[] {
   return out;
 }
 
-function diffObjects<T extends { id: string }>(before: T[], after: T[], pick: (t: T) => Record<string, unknown>): ObjectChange[] {
+function diffObjects<T extends { id: string }>(
+  before: T[],
+  after: T[],
+  pick: (t: T) => Record<string, unknown>,
+  hint?: (t: T) => string[],
+): ObjectChange[] {
   const mb = new Map(before.map((t) => [t.id, t]));
   const ma = new Map(after.map((t) => [t.id, t]));
   const out: ObjectChange[] = [];
   for (const id of [...new Set([...mb.keys(), ...ma.keys()])].sort(sortKey)) {
     const b = mb.get(id);
     const a = ma.get(id);
-    if (!b) out.push({ id, change: 'added', attrs: [] });
-    else if (!a) out.push({ id, change: 'removed', attrs: [] });
+    const h = hint ? [...new Set([...(b ? hint(b) : []), ...(a ? hint(a) : [])])].filter(Boolean) : [];
+    const hints = h.length ? { hints: h } : {};
+    if (!b) out.push({ id, change: 'added', attrs: [], ...hints });
+    else if (!a) out.push({ id, change: 'removed', attrs: [], ...hints });
     else {
       const attrs = diffFlat(pick(b), pick(a));
-      if (attrs.length) out.push({ id, change: 'changed', attrs });
+      if (attrs.length) out.push({ id, change: 'changed', attrs, ...hints });
     }
   }
   return out;
@@ -83,7 +97,7 @@ function diffObjects<T extends { id: string }>(before: T[], after: T[], pick: (t
 
 export function diffPageModel(before?: PageModel, after?: PageModel): PageModelDiff {
   if (!before || !after) {
-    return { comparable: false, forms: [], tabs: [], buttons: [], drawers: [], tables: [] };
+    return { comparable: false, forms: [], tabs: [], buttons: [], drawers: [], tables: [], panels: [] };
   }
   const mb = new Map(before.forms.map((f) => [f.id, f]));
   const ma = new Map(after.forms.map((f) => [f.id, f]));
@@ -105,8 +119,10 @@ export function diffPageModel(before?: PageModel, after?: PageModel): PageModelD
     tabs: diffObjects(before.tabs, after.tabs, (t) => ({ title: t.title })),
     buttons: diffObjects(before.buttons, after.buttons, (t) => ({
       text: t.text, icon: t.icon, disabled: t.disabled, permission: t.permission,
-    })),
+    }), (t) => [t.icon ?? '', t.on_click ?? '']),
     drawers: diffObjects(before.drawers, after.drawers, (t) => ({ title: t.title })),
+    // 旧基线没有 panels：不可比，不能当成全部新增
+    panels: before.panels ? diffObjects(before.panels, after.panels ?? [], (t) => ({ title: t.title })) : [],
     tables: diffObjects(before.tables, after.tables, (t) => ({
       columns: t.columns.map((c) => `${c.name}${c.editor ? '*' : ''}`).sort(),
     })),
@@ -114,5 +130,5 @@ export function diffPageModel(before?: PageModel, after?: PageModel): PageModelD
 }
 
 export function pageModelChanged(d: PageModelDiff): boolean {
-  return d.forms.length + d.tabs.length + d.buttons.length + d.drawers.length + d.tables.length > 0;
+  return d.forms.length + d.tabs.length + d.buttons.length + d.drawers.length + d.tables.length + d.panels.length > 0;
 }

@@ -98,6 +98,7 @@ export function extractPageModel(
   const buttons: PageModel['buttons'] = [];
   const drawers: PageModel['drawers'] = [];
   const tables: PageModel['tables'] = [];
+  const panels: NonNullable<PageModel['panels']> = [];
 
   for (const f of [...files].sort((a, b) => (a.relativePath < b.relativePath ? -1 : 1))) {
     const kind = scriptKind(f.relativePath);
@@ -178,6 +179,16 @@ export function extractPageModel(
             ...(attrs.get('disabled') ? { disabled: attrs.get('disabled')!.text } : {}),
             fields: collectFields(node, attrs.get('dataSet')?.text),
           });
+        } else if (tag === 'Panel') {
+          const key = attrs.get('key')?.lit ?? '';
+          const hdr = el.attributes.properties.find(
+            (a): a is ts.JsxAttribute => ts.isJsxAttribute(a) && ts.isIdentifier(a.name) && a.name.text === 'header',
+          );
+          let title: string | undefined;
+          if (hdr?.initializer && ts.isJsxExpression(hdr.initializer) && hdr.initializer.expression) {
+            title = intlDefault(unwrap(hdr.initializer.expression));
+          } else if (hdr?.initializer && ts.isStringLiteral(hdr.initializer)) title = hdr.initializer.text;
+          if (key || title) panels.push({ id: `${base(file)}/${key || title}`, key, ...(title ? { title } : {}), file });
         } else if (tag === 'TabPane') {
           const key = attrs.get('key')?.lit ?? '';
           const tabAttr = el.attributes.properties.find(
@@ -254,5 +265,6 @@ export function extractPageModel(
     buttons: dedupe(buttons).sort(byId),
     drawers: dedupe(drawers).sort(byId),
     tables: dedupe(tables).sort(byId),
+    panels: dedupe(panels).sort(byId),
   };
 }

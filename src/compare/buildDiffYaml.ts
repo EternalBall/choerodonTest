@@ -133,7 +133,7 @@ export function buildDiffYaml(opts: {
   };
 
   const pm = opts.artifactDiff.page_model;
-  if (!pm.comparable || pm.forms.length || pm.tabs.length || pm.buttons.length || pm.drawers.length || pm.tables.length) {
+  if (!pm.comparable || pm.forms.length || pm.tabs.length || pm.buttons.length || pm.drawers.length || pm.tables.length || pm.panels.length) {
     doc.structure = pm;
   }
 

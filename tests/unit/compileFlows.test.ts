@@ -412,7 +412,7 @@ describe('模型直出 steps', () => {
   it('校验通过 → 采用模型步骤，api 断言带 urlIncludes', () => {
     const a = compileMetaOpsAndFlows(mk(good), { force: true, knownElements: known });
     assert.equal(a.operations[0]!.step_source, 'llm_steps');
-    const last = a.meta_ops!.find((m) => m.id === 'op1_s3')!;
+    const last = a.meta_ops!.find((m) => m.id === 'op1_click_expect_api_savebtn')!;
     assert.equal(last.kind, 'click_expect_api');
     assert.deepEqual(last.args, { urlIncludes: '/v1/{tenantId}/x/save' });
     assert.equal(a.meta_ops!.find((m) => m.id === 'goto_config')!.args?.path, '/tarzan/problem-field-config');
@@ -464,7 +464,7 @@ describe('模型直出 steps', () => {
     ];
     const ok = compileMetaOpsAndFlows(mk(steps), { force: true, knownElements: ['editBtn', 'colHeader'] });
     assert.equal(ok.operations[0]!.step_source, 'llm_steps');
-    assert.equal(ok.meta_ops!.find((m) => m.id === 'op1_s2')!.args?.skipIfMissing, 'colHeader');
+    assert.equal(ok.meta_ops!.find((m) => m.id === 'op1_click_editbtn')!.args?.skipIfMissing, 'colHeader');
     const bad = compileMetaOpsAndFlows(mk(steps), { force: true, knownElements: ['editBtn'] });
     assert.equal(bad.operations[0]!.step_source, 'template');
   });

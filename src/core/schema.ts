@@ -468,6 +468,8 @@ export const PageModelSchema = z.object({
     }),
   ),
   drawers: z.array(z.object({ id: z.string(), title: z.string().optional(), file: z.string() })),
+  /** 折叠面板等分组容器（旧产物缺省） */
+  panels: z.array(z.object({ id: z.string(), key: z.string(), title: z.string().optional(), file: z.string() })).optional(),
   tables: z.array(
     z.object({
       id: z.string(),

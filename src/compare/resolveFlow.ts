@@ -51,8 +51,8 @@ export type StepChange = {
   details?: string[];
   /** 填表单类步骤关联到的表单及其字段级变更 */
   form?: { id: string; fields: FormChange['fields'] };
-  /** 步骤依赖的页面对象（页签/按钮/抽屉/表单）已被删除：关联推断，需结合源码确认 */
-  stale_reason?: string;
+  /** 关联推断到的按钮/表格变更（按元素名匹配，需结合源码确认） */
+  object_changes?: string[];
 };
 
 /** 按 edges 拓扑展开节点顺序；无边则按 nodes 声明序 */
@@ -258,6 +258,34 @@ function chainHighlights(before: ResolvedFlowStep[], after: ResolvedFlowStep[], 
 }
 
 
+const stemOf = (el: string) => el.toLowerCase().replace(/(btn|button|link|cell|icon|tab)$/g, '').replace(/[^a-z0-9]/g, '');
+const flatAttrs = (o: { attrs: { attr: string; before?: unknown; after?: unknown }[] }) =>
+  o.attrs.map((a) => `${a.attr}: ${JSON.stringify(a.before ?? null)}→${JSON.stringify(a.after ?? null)}`).join('; ');
+
+/** 按元素名把按钮/表格变更关联到步骤：按钮看图标与点击处理函数名，表格看数据集名 */
+function objectLinks(step: ResolvedFlowStep, pageDiff: PageModelDiff | undefined): string[] {
+  const el = step.element;
+  if (!pageDiff?.comparable || !el) return [];
+  const out: string[] = [];
+  const stem = stemOf(el);
+  if (stem.length >= 3) {
+    for (const b of pageDiff.buttons) {
+      const names = [b.id.split('/').pop() ?? '', ...(b.hints ?? [])].map((x) => x.toLowerCase().replace(/[^a-z0-9]/g, '')).filter((x) => x.length >= 3);
+      if (names.some((tail) => tail === stem || tail.includes(stem) || stem.includes(tail))) {
+        out.push(`按钮 ${b.id} ${b.change}${b.attrs.length ? `（${flatAttrs(b)}）` : ''}`);
+      }
+    }
+  }
+  const low = el.toLowerCase();
+  for (const t of pageDiff.tables) {
+    const ds = (t.id.split('/').pop() ?? '').toLowerCase();
+    if (low.length >= 5 && ds.includes(low.replace(/(row|cell|link|btn|button)$/g, ''))) {
+      out.push(`表格 ${t.id} ${t.change}${t.attrs.length ? `（${flatAttrs(t)}）` : ''}`);
+    }
+  }
+  return out;
+}
+
 type Model = { forms: { id: string; fields: { name: string }[] }[] } | undefined;
 
 /** 步骤级变更树：按语义 key（含出现序号）配对；填表单类步骤关联到表单并带出字段级变更 */
@@ -311,8 +339,9 @@ function buildStepChanges(
     const names = [...new Set([...stepFields(b), ...stepFields(s)])];
     const form = s.kind === 'fill_form' || b.kind === 'fill_form' ? linkForm(names) : undefined;
     if (form?.fields.length) details.push('表单字段变更');
-    if (details.length || form?.fields.length) {
-      out.push({ key: k, change: 'modified', ...(details.length ? { details } : {}), ...(form ? { form: { id: form.id, fields: form.fields } } : {}) });
+    const links = objectLinks(s, pageDiff);
+    if (details.length || form?.fields.length || links.length) {
+      out.push({ key: k, change: 'modified', ...(details.length ? { details } : {}), ...(links.length ? { object_changes: links } : {}), ...(form ? { form: { id: form.id, fields: form.fields } } : {}) });
     }
   }
   return out;
@@ -396,6 +425,7 @@ export function diffFlowChains(
     } else {
       const hl = same ? [] : chainHighlights(before, after, strict, argFields);
       for (const c of stepChanges) {
+        for (const o of c.object_changes ?? []) hl.push(`步骤「${c.key}」关联推断：${o}`);
         if (c.form) hl.push(`步骤「${c.key}」表单 ${c.form.id}：${c.form.fields.map((f) => `${f.change === 'added' ? '+' : f.change === 'removed' ? '-' : '~'}${f.name}`).join(' ')}`);
       }
       for (const r of stale) hl.push(`关联推断：${r}`);

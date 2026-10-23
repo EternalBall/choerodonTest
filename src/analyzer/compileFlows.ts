@@ -961,13 +961,23 @@ function isRowEditDelete(op: Operation, hasRowGate: boolean): boolean {
 }
 
 /** 模型步骤 → DraftStep；goto/filter_query 按页去重复用，其余按操作隔离 */
-function llmDraft(op: Operation, s: ValidatedStep, i: number, fallbackPageId?: string): DraftStep {
+/** 语义步骤 id：操作 + 动作 + 目标（元素或接口末段），同名按出现序号加后缀；不随步骤序号漂移 */
+export function semanticStepId(op: Operation, s: ValidatedStep, seen: Map<string, number>): string {
+  const target = (s.element || s.api || '').split('/').filter(Boolean).slice(-2).join('_');
+  const slug = `${s.kind}_${target}`.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const base = `${op.id}_${slug}`;
+  const n = (seen.get(base) ?? 0) + 1;
+  seen.set(base, n);
+  return n === 1 ? base : `${base}_${n}`;
+}
+
+function llmDraft(op: Operation, s: ValidatedStep, seen: Map<string, number>, fallbackPageId?: string): DraftStep {
   // 模型漏写 page_id 时沿用前序步骤所在页，保证 id 稳定（否则落成 filter_query_main，两次分析不一致）
   if (!s.page_id && fallbackPageId) s = { ...s, page_id: fallbackPageId };
   const id =
     s.kind === 'goto' || s.kind === 'filter_query'
       ? `${s.kind}_${s.page_id ?? 'main'}`
-      : `${op.id}_s${i + 1}`;
+      : semanticStepId(op, s, seen);
   let args =
     s.kind === 'click_expect_api' && s.api ? { urlIncludes: s.api, ...(s.args ?? {}) } : s.args;
   // pickLov 关键词用 args.open 指向 Lov 搜索图标；模型只写 element 时补上
@@ -1026,8 +1036,9 @@ export function compileMetaOpsAndFlows(
       const v = validateOperationSteps(op, artifact, known);
       if (v.ok) {
         let lastPage: string | undefined;
-        drafts = v.steps.map((s, i) => {
-          const d = s.kind === 'goto' ? draftGoto(s.page_id!, pages, op, entryRoute) : llmDraft(op, s, i, lastPage);
+        const seen = new Map<string, number>();
+        drafts = v.steps.map((s) => {
+          const d = s.kind === 'goto' ? draftGoto(s.page_id!, pages, op, entryRoute) : llmDraft(op, s, seen, lastPage);
           lastPage = d.page_id ?? lastPage;
           return d;
         });
