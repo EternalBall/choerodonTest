@@ -167,8 +167,14 @@ export function resolveFlowChain(
  * 步骤指纹。默认（稳定模式）只看 步骤 id / 类型 / 接口：元素名、args、ready 是模型起的名字或参数，
  * 同一份源码两次分析也会不同；strict 才把它们算进来。
  */
+function stepFields(s: ResolvedFlowStep): string[] {
+  const f = (s.args as { fields?: unknown } | undefined)?.fields;
+  return Array.isArray(f) ? f.filter((x): x is string => typeof x === 'string').sort() : [];
+}
+
 function stepFingerprint(s: ResolvedFlowStep, strict = false): string {
-  const base = [s.meta_op_id, s.kind, s.api ?? ''];
+  // 步骤内处理的字段集合（如 fill_form 的 fields）属于流程内容，稳定模式也比
+  const base = [s.meta_op_id, s.kind, s.api ?? '', stepFields(s).join(',')];
   if (strict) base.push(s.element ?? '', JSON.stringify(s.ready ?? null), JSON.stringify(s.args ?? null));
   return base.join('|');
 }
@@ -177,6 +183,12 @@ function fieldDiffs(a: ResolvedFlowStep, b: ResolvedFlowStep, strict = false): s
   const fieldChanges: string[] = [];
   if (a.kind !== b.kind) fieldChanges.push(`kind ${a.kind}→${b.kind}`);
   if (!deepEqual(a.api, b.api)) fieldChanges.push('api');
+  const fa = stepFields(a);
+  const fb = stepFields(b);
+  const plus = fb.filter((x) => !fa.includes(x));
+  const minus = fa.filter((x) => !fb.includes(x));
+  if (plus.length) fieldChanges.push(`字段新增 ${plus.join(',')}`);
+  if (minus.length) fieldChanges.push(`字段移除 ${minus.join(',')}`);
   if (strict) {
     if (!deepEqual(a.element, b.element)) fieldChanges.push('element');
     if (!deepEqual(a.ready, b.ready)) fieldChanges.push('ready');

@@ -183,3 +183,43 @@ export function extractFieldFacts(
   );
   return sorted.flatMap((f) => extractFromFile(f.relativePath, f.content));
 }
+
+/**
+ * 确定性提取“实际渲染的可编辑控件”名：
+ * - JSX 元素的 name="x" 属性（注释掉的 JSX 不在 AST 里，自然被排除）；
+ * - columns 数组里带 editor 键的列对象（表格行内编辑）。
+ */
+export function extractRenderedEditableFields(
+  files: { relativePath: string; content: string }[],
+): string[] {
+  const out = new Set<string>();
+  for (const f of files) {
+    const kind = scriptKind(f.relativePath);
+    if (kind === undefined) continue;
+    const sf = ts.createSourceFile(f.relativePath, f.content, ts.ScriptTarget.Latest, true, kind);
+    const visit = (node: ts.Node) => {
+      if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name) && node.name.text === 'name') {
+        const init = node.initializer;
+        if (init && ts.isStringLiteral(init)) out.add(init.text);
+        else if (init && ts.isJsxExpression(init) && init.expression) {
+          const e = unwrap(init.expression);
+          if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) out.add(e.text);
+        }
+      } else if (ts.isPropertyAssignment(node) && propName(node.name, sf) === 'columns') {
+        const arr = unwrap(node.initializer);
+        if (ts.isArrayLiteralExpression(arr)) {
+          for (const el of arr.elements) {
+            const obj = unwrap(el);
+            if (!ts.isObjectLiteralExpression(obj)) continue;
+            const hasEditor = obj.properties.some((p) => p.name && propName(p.name, sf) === 'editor');
+            const name = fieldNameOf(obj);
+            if (hasEditor && name !== undefined) out.add(name);
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sf);
+  }
+  return [...out].sort();
+}

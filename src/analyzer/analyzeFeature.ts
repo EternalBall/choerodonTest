@@ -5,8 +5,8 @@ import { loadPlaybooksForSources } from '../knowledge/loadPlaybooks.js';
 import { loadFeatureElementsOverlay, loadPlatformKit } from '../knowledge/platformKit.js';
 import { compileMetaOpsAndFlows } from './compileFlows.js';
 import { retrieveFeatureCode } from './retrieve.js';
-import { extractFieldFacts } from './staticExtract.js';
-import { anchorToBaseline, formatBaselineForPrompt, loadBaselineArtifact } from './baselineAnchor.js';
+import { extractFieldFacts, extractRenderedEditableFields } from './staticExtract.js';
+import { anchorToBaseline, formatBaselineForPrompt, loadBaselineArtifact, pruneUnrenderedFields } from './baselineAnchor.js';
 import { llmAnalyzeFeature } from './llmAnalyze.js';
 import { locatePages, pickPageEntries } from './llmLocate.js';
 
@@ -68,6 +68,7 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
     ...Object.keys(await loadFeatureElementsOverlay(opts.feature)),
     ...Object.keys(located?.result.elements_draft[located.result.slug] ?? {}),
   ];
+  raw = pruneUnrenderedFields(raw, extractRenderedEditableFields(snippets)).artifact;
   const artifact = compileMetaOpsAndFlows(raw, { force: true, knownElements });
   if (located) {
     const g = located.result.gaps;

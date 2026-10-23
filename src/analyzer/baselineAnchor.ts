@@ -119,3 +119,57 @@ export function anchorToBaseline(
   logger.info(report, '基线锚定完成');
   return { artifact: { ...artifact, operations: ops }, report };
 }
+
+/**
+ * 字段规则以静态提取为准：可编辑字段（editable_when 非空）若源码里没有任何实际渲染的控件
+ *（JSX name 属性 / 带 editor 的列），则从 field_rules 和各处 fields 列表中剔除。
+ * rendered 为空（未提取到任何控件）时不处理，避免误删。
+ */
+export function pruneUnrenderedFields(
+  artifact: FeatureArtifact,
+  rendered: string[],
+): { artifact: FeatureArtifact; dropped: string[] } {
+  if (!rendered.length) return { artifact, dropped: [] };
+  const ok = new Set(rendered);
+  // 被当作可编辑目标的字段：规则里 editable_when 非空，或出现在任一 fields 列表（fill_form 目标 / 操作字段集）
+  const targets = new Set(
+    (artifact.field_rules ?? []).filter((r) => (r.editable_when?.length ?? 0) > 0).map((r) => r.name),
+  );
+  const collect = (v: unknown): void => {
+    if (Array.isArray(v)) v.forEach(collect);
+    else if (v && typeof v === 'object') {
+      for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+        if (k === 'fields' && Array.isArray(x) && x.every((i) => typeof i === 'string')) {
+          (x as string[]).forEach((i) => targets.add(i));
+        } else collect(x);
+      }
+    }
+  };
+  collect(artifact.operations);
+  collect(artifact.meta_ops);
+  const dropped = [...targets].filter((n) => !ok.has(n)).sort();
+  if (!dropped.length) return { artifact, dropped };
+  const bad = new Set(dropped);
+  const strip = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(strip);
+    if (v && typeof v === 'object') {
+      return Object.fromEntries(
+        Object.entries(v as Record<string, unknown>).map(([k, x]) =>
+          k === 'fields' && Array.isArray(x) && x.every((i) => typeof i === 'string')
+            ? [k, (x as string[]).filter((i) => !bad.has(i))]
+            : [k, strip(x)],
+        ),
+      );
+    }
+    return v;
+  };
+  const next = strip({
+    ...artifact,
+    field_rules: (artifact.field_rules ?? []).filter((r) => !bad.has(r.name)),
+  }) as FeatureArtifact;
+  logger.info({ dropped }, '字段规则剔除：源码中无实际渲染控件');
+  return {
+    artifact: { ...next, notes: [...(next.notes ?? []), `静态提取：以下字段源码未渲染，已从字段规则剔除：${dropped.join(', ')}`] },
+    dropped,
+  };
+}
