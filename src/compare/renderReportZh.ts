@@ -233,8 +233,8 @@ function renderCore(opts: {
   L.push('');
   L.push(
     doc.meta.logic_changed
-      ? `**结论：共 ${doc.flows.length} 条流程，其中 ${mk('C', `${changed.length} 条有变化`)}，${doc.flows.length - changed.length} 条无变化。**`
-      : `**结论：共 ${doc.flows.length} 条流程，均无变化。**`,
+      ? `结论：共 ${doc.flows.length} 条流程，其中 ${mk('C', `${changed.length} 条有变化`)}，${doc.flows.length - changed.length} 条无变化。`
+      : `结论：共 ${doc.flows.length} 条流程，均无变化。`,
   );
   if (doc.structure && doc.structure.comparable === false) {
     L.push('');
