@@ -7,6 +7,8 @@ import type { PageModelDiff } from './diffPageModel.js';
 import type { OperationSchema } from '../core/schema.js';
 import type { z } from 'zod';
 
+export type FieldDiffItemWithFlows = FieldDiffItem & { linked_flows?: string[] };
+
 type Operation = z.infer<typeof OperationSchema>;
 
 /** 写入 diff 的精简步骤（去掉 index 冗余，便于 LLM 阅读） */
@@ -43,6 +45,8 @@ export type CompareDiffDocument = {
     highlights: string[];
     step_changes?: StepChange[];
     stale_reasons?: string[];
+    /** 关联到本流程、未挂到具体步骤的 field_facts */
+    field_facts?: FieldDiffItem[];
     before: DiffFlowStep[];
     after: DiffFlowStep[];
   }>;
@@ -66,7 +70,7 @@ export type CompareDiffDocument = {
   };
   /** 字段级变更（仅有变更时出现）：字段事实 + 字段规则/校验/页面状态逐项 diff */
   fields?: {
-    field_facts: FieldDiffItem[];
+    field_facts: FieldDiffItemWithFlows[];
     field_rules: ListDiffItem[];
     validations: ListDiffItem[];
     page_states: ListDiffItem[];
@@ -110,6 +114,7 @@ export function buildDiffYaml(opts: {
     highlights: c.highlights,
     ...(c.step_changes ? { step_changes: c.step_changes } : {}),
     ...(c.stale_reasons ? { stale_reasons: c.stale_reasons } : {}),
+    ...(c.field_facts?.length ? { field_facts: c.field_facts } : {}),
     before: c.before.map(slimStep),
     after: c.after.map(slimStep),
   }));
@@ -172,8 +177,23 @@ export function buildDiffYaml(opts: {
     d.validations_items.length ||
     d.page_states_items.length
   ) {
+    const flowByFact = new Map<string, string[]>();
+    for (const chain of d.flow_chains) {
+      const keys = [
+        ...(chain.field_facts ?? []).map((f) => f.key),
+        ...(chain.step_changes ?? []).flatMap((s) => (s.field_facts ?? []).map((f) => f.key)),
+      ];
+      for (const k of keys) {
+        const list = flowByFact.get(k) ?? [];
+        if (!list.includes(chain.id)) list.push(chain.id);
+        flowByFact.set(k, list);
+      }
+    }
     doc.fields = {
-      field_facts: d.field_facts,
+      field_facts: d.field_facts.map((f) => {
+        const linked = flowByFact.get(f.key);
+        return linked?.length ? { ...f, linked_flows: linked } : f;
+      }),
       field_rules: d.field_rules_items,
       validations: d.validations_items,
       page_states: d.page_states_items,

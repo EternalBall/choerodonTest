@@ -3,6 +3,7 @@ import { OperationSchema } from '../core/schema.js';
 import type { z } from 'zod';
 import { deepEqual } from './deepEqual.js';
 import { diffFieldFacts, diffRuleLists, type FieldDiffItem, type ListDiffItem } from './diffFields.js';
+import { attachFieldFactsToFlows } from './linkFieldFacts.js';
 import { diffFlowChains, type FlowChainDiff } from './resolveFlow.js';
 import { diffPageModel, pageModelChanged, type PageModelDiff } from './diffPageModel.js';
 
@@ -114,7 +115,13 @@ export function diffFeatureArtifacts(
 
   const meta_ops = diffById(before.meta_ops, after.meta_ops);
   const page_model = diffPageModel(before.page_model, after.page_model);
-  const flow_chains = diffFlowChains(before, after, strict, page_model);
+  const field_facts = diffFieldFacts(before.field_facts, after.field_facts);
+  const flow_chains = attachFieldFactsToFlows(
+    diffFlowChains(before, after, strict, page_model),
+    field_facts,
+    before,
+    after,
+  );
 
   const flowsBase = diffById(before.flows, after.flows);
   const sequenceChanged: ArtifactDiff['flows']['sequenceChanged'] = [];
@@ -148,7 +155,7 @@ export function diffFeatureArtifacts(
     entry: {
       changed: !deepEqual(before.entry, after.entry),
     },
-    field_facts: diffFieldFacts(before.field_facts, after.field_facts),
+    field_facts,
     field_rules_items: lists.field_rules,
     validations_items: lists.validations,
     page_states_items: lists.page_states,

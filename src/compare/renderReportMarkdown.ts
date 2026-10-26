@@ -69,7 +69,12 @@ function renderFieldChanges(lines: string[], fields: CompareDiffDocument['fields
   for (const [ds, list] of byDs) {
     lines.push(`- 数据集 **${ds}**`);
     for (const f of list) {
-      lines.push(`  - 字段 **${f.name}**（${f.group}，${FIELD_CHANGE_LABEL[f.change]}）`);
+      const flows =
+        'linked_flows' in f && Array.isArray((f as { linked_flows?: string[] }).linked_flows)
+          ? (f as { linked_flows: string[] }).linked_flows
+          : undefined;
+      const flowNote = flows?.length ? `，关联流程：${flows.join('、')}` : '';
+      lines.push(`  - 字段 **${f.name}**（${f.group}，${FIELD_CHANGE_LABEL[f.change]}${flowNote}）`);
       for (const a of f.attrs) lines.push(`    - ${attrLine(a)}`);
     }
   }

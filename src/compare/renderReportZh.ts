@@ -1,6 +1,8 @@
 import type { FeatureArtifact } from '../core/schema.js';
 import type { CompareDiffDocument } from './buildDiffYaml.js';
+import type { FieldDiffItem } from './diffFields.js';
 import type { AttrDiff, FieldChange, FormChange, ObjectChange } from './diffPageModel.js';
+import { linkedFieldFactKeys } from './linkFieldFacts.js';
 import type { StepChange } from './resolveFlow.js';
 
 /**
@@ -72,6 +74,16 @@ const ATTR: Record<string, string> = {
   'ds.multiple': '是否多选',
   depends_on: '依赖的字段',
   derived_from: '由哪些字段带出',
+  // field_facts 原始属性名
+  lookupUrl: '下拉请求地址',
+  lookupCode: '值集编码',
+  lovCode: '弹窗值集编码',
+  required: '是否必填',
+  type: '数据类型',
+  label: '字段名称',
+  bind: '带出来源',
+  defaultValue: '默认值',
+  dynamicProps: '随其他字段变化的规则',
 };
 
 /** 语义标记：⟦A:新增⟧ ⟦D:移除⟧ ⟦C:修改⟧ ⟦W:警告⟧ ⟦O:旧值⟧ ⟦N:新值⟧；Markdown 与 HTML 各自渲染成加粗/颜色 */
@@ -131,6 +143,25 @@ function renderCore(opts: {
     }
     return out;
   };
+
+  const factLines = (facts: FieldDiffItem[]): string[] => {
+    const out: string[] = [];
+    const groupZh = (g: string) => (g === 'queryFields' ? '查询字段' : '表单字段');
+    for (const f of facts) {
+      const head =
+        f.change === 'added'
+          ? mk('A', `新增${groupZh(f.group)}「${fieldName(f.name)}」`)
+          : f.change === 'removed'
+            ? mk('D', `移除${groupZh(f.group)}「${fieldName(f.name)}」`)
+            : mk('C', `${groupZh(f.group)}「${fieldName(f.name)}」变化`);
+      const attrs = f.attrs.map(attrLine).join('；');
+      out.push(`${head}（数据集 ${f.ds}）${attrs ? `：${attrs}` : ''}`);
+    }
+    return out;
+  };
+
+  const flowFactCount = (f: (typeof doc.flows)[number]) =>
+    (f.field_facts?.length ?? 0) + (f.step_changes ?? []).reduce((n, c) => n + (c.field_facts?.length ?? 0), 0);
 
   const modelOf = (side: FeatureArtifact) => side.page_model;
   const objName = (kind: 'button' | 'tab' | 'panel' | 'drawer' | 'table', id: string): string => {
@@ -220,6 +251,8 @@ function renderCore(opts: {
     const sc = f.step_changes ?? [];
     const nField = sc.reduce((n, c) => n + (c.form?.fields.length ?? 0), 0);
     if (nField) sc.filter((c) => c.form).forEach((c) => sum.push(`表单字段变化 ${c.form!.fields.length} 处`));
+    const nFacts = flowFactCount(f);
+    if (nFacts) sum.push(`数据集字段变化 ${nFacts} 处`);
     if (sc.some((c) => c.object_changes?.length)) sum.push('按钮/表格等页面元素有变化');
     if (sc.some((c) => c.change === 'added')) sum.push(`新增步骤 ${sc.filter((c) => c.change === 'added').length} 个`);
     if (sc.some((c) => c.change === 'removed')) sum.push(`移除步骤 ${sc.filter((c) => c.change === 'removed').length} 个`);
@@ -248,6 +281,7 @@ function renderCore(opts: {
       if (!c) return;
       for (const d of c.details ?? []) if (d !== '表单字段变更') L.push(`   - ${d.replace('kind ', '动作 ')}`);
       if (c.form) for (const t of fieldLines(c.form.fields)) L.push(`   - ${t}`);
+      if (c.field_facts?.length) for (const t of factLines(c.field_facts)) L.push(`   - ${t}`);
       for (const o of c.object_changes ?? []) {
         const m = o.match(/^(按钮|表格) (\S+)/);
         const list = m?.[1] === '按钮' ? doc.structure?.buttons : doc.structure?.tables;
@@ -260,12 +294,25 @@ function renderCore(opts: {
     } else {
       for (const { key, s } of afterSteps) {
         const c = sc.get(key);
-        const tag = f.change_type === 'added' ? '' : c?.change === 'added' ? ` ${mk('A', '【新增步骤】')}` : c ? ` ${mk('C', '【有变化】')}` : '';
+        const onlyFacts = c && !c.details?.length && !c.form && !c.object_changes?.length && c.field_facts?.length;
+        const tag =
+          f.change_type === 'added'
+            ? ''
+            : c?.change === 'added'
+              ? ` ${mk('A', '【新增步骤】')}`
+              : c
+                ? ` ${mk('C', onlyFacts ? '【字段有变化】' : '【有变化】')}`
+                : '';
         renderStep(key, stepTitle(s), tag, c);
       }
       for (const { key, s } of beforeSteps) {
         if (sc.get(key)?.change === 'removed') renderStep(key, stepTitle(s), ` ${mk('D', '【已移除步骤】')}`);
       }
+    }
+    if (f.field_facts?.length) {
+      L.push('');
+      L.push('相关数据集字段变化（未挂到具体步骤）：');
+      for (const t of factLines(f.field_facts)) L.push(`- ${t}`);
     }
     for (const r of f.stale_reasons ?? []) {
       const m = r.match(/^(页签|面板|抽屉) (\S+) 已从源码移除$/);
@@ -291,6 +338,21 @@ function renderCore(opts: {
     const shownButtons = new Set<string>();
     for (const o of st.buttons) if (!shownButtons.has(o.id)) { shownButtons.add(o.id); rest.push(`- ${objLine('button', o)}`); }
   }
+  const linkedFacts = linkedFieldFactKeys(
+    doc.flows.map((f) => ({
+      id: f.id,
+      title: f.title,
+      change_type: f.change_type,
+      before: [],
+      after: [],
+      highlights: [],
+      step_changes: f.step_changes,
+      field_facts: f.field_facts,
+    })),
+  );
+  const orphanFacts = (doc.fields?.field_facts ?? []).filter((f) => !linkedFacts.has(f.key));
+  for (const t of factLines(orphanFacts)) rest.push(`- ${t}`);
+
   L.push('');
   L.push('## 三、页面结构变化（汇总，含未挂到具体流程的）');
   L.push('');
@@ -305,6 +367,8 @@ function renderCore(opts: {
   if (changed.some((f) => f.stale_reasons?.length)) tips.push('标有“关联推断”的内容是按名称匹配出来的，不是源码里的直接证据。');
   if (changed.some((f) => (f.step_changes ?? []).some((c) => c.object_changes?.length))) tips.push('按钮/表格的变化是按元素名称关联到步骤的，可能关联到不相关的步骤，也可能漏关联。');
   if (rest.some((x) => x.startsWith('- 表单') || x.startsWith('- 新增表单') || x.startsWith('- 移除表单'))) tips.push('第三节里的表单变化没有挂到具体流程步骤（流程里没有对应的“填写表单”步骤），请自行判断影响哪些流程。');
+  if (orphanFacts.length) tips.push('第三节里未挂到流程的数据集字段变化，是按字段名/查询流程未能匹配到步骤；可能影响列表列展示等，请自行判断。');
+  if (changed.some((f) => flowFactCount(f) > 0)) tips.push('数据集字段与流程的关联按字段名（及查询类流程的 queryFields）匹配，不是源码里的直接调用边。');
   tips.forEach((t) => L.push(`- ${t}`));
   L.push('');
   return L.join('\n');

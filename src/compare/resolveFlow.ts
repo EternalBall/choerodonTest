@@ -7,6 +7,7 @@ import {
   summarizeEdits,
 } from './alignChain.js';
 import { deepEqual } from './deepEqual.js';
+import type { FieldDiffItem } from './diffFields.js';
 import type { FormChange, PageModelDiff } from './diffPageModel.js';
 
 type Operation = z.infer<typeof OperationSchema>;
@@ -41,6 +42,11 @@ export type FlowChainDiff = {
   step_changes?: StepChange[];
   /** 流程依赖的页面对象（页签/抽屉/表单）在新源码里已被删除：关联推断，需结合源码确认 */
   stale_reasons?: string[];
+  /**
+   * 关联到本流程、但未挂到具体步骤的 field_facts 变更（按字段名 / 查询数据集匹配）。
+   * 已挂到 step_changes[].field_facts 的不在此重复。
+   */
+  field_facts?: FieldDiffItem[];
 };
 
 export type StepChange = {
@@ -53,6 +59,8 @@ export type StepChange = {
   form?: { id: string; fields: FormChange['fields'] };
   /** 关联推断到的按钮/表格变更（按元素名匹配，需结合源码确认） */
   object_changes?: string[];
+  /** 该步骤关联到的数据集字段事实变更（field_facts） */
+  field_facts?: FieldDiffItem[];
 };
 
 /** 按 edges 拓扑展开节点顺序；无边则按 nodes 声明序 */
