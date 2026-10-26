@@ -9,6 +9,7 @@ import {
 } from '../core/featurePaths.js';
 import { FeatureArtifactSchema, SuiteSchema } from '../core/schema.js';
 import { buildDiffYaml } from './buildDiffYaml.js';
+import { renderReportHtml, renderReportZh } from './renderReportZh.js';
 import { diffFeatureArtifacts } from './diffArtifact.js';
 import { diffSuites } from './diffSuite.js';
 import { llmSummarizeDiff } from './llmSummarizeDiff.js';
@@ -131,6 +132,12 @@ export async function runCompare(opts: {
   const latestDiffFile = path.join(compareDir, 'latest-diff.yaml');
   await writeYamlFile(diffFile, diffDoc);
   await writeYamlFile(latestDiffFile, diffDoc);
+
+  // 确定性中文报告：先写，不依赖模型
+  const zhFile = path.join(compareDir, 'latest-report.zh.md');
+  const zhOpts = { doc: diffDoc, before: beforeArtifact, after: afterArtifact };
+  await fs.writeFile(zhFile, renderReportZh(zhOpts), 'utf8');
+  await fs.writeFile(path.join(compareDir, 'latest-report.zh.html'), renderReportHtml(zhOpts), 'utf8');
 
   const { report, raw: llmRaw } = await llmSummarizeDiff(diffDoc);
   await fs.writeFile(path.join(compareDir, 'report.llm.raw.json'), llmRaw, 'utf8');
