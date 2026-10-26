@@ -93,6 +93,12 @@ async function ensureFilterFieldVisible(
       '.c7n-pro-table-filter-list input.c7n-pro-input[placeholder="搜索过滤条件"]',
   );
 
+  // 页面刚进入时筛选栏可能还没渲染完：先等筛选栏出现，避免把“还没渲染”误判成“字段不在筛选栏”而去翻添加筛选菜单
+  await page
+    .locator('.c7n-pro-table-dynamic-filter-bar, .c7n-pro-table-filter-menu')
+    .first()
+    .waitFor({ state: 'visible', timeout: 30_000 })
+    .catch(() => undefined);
   const input = page.locator(`input.c7n-pro-input[name="${field.name}"]`).first();
   const already = await input.isVisible().catch(() => false);
   if (already) return;
