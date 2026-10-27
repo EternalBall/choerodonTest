@@ -73,7 +73,9 @@ export function coerce(raw: unknown, pre: PageLocateResult): PageLocateResult {
   // 确定性预绑定是权威：模型丢掉的补回，改写过的还原（自动应答曾把 `.c7n-pro-table >> nth=0` 改成不带 nth 的 kit 引用，
   // 会同时匹配两张表）。模型只负责新增预绑定没有的键，不得改动预绑定已产出的定义
   for (const [k, v] of Object.entries(pre.locators)) locators[k] = v;
-  const pages = Array.isArray(r.pages) && r.pages.length ? r.pages : pre.pages;
+  // 模型偶尔返回缺 nodes 的页面：丢弃坏页，全坏则退回确定性预绑定的页面
+  const goodPages = Array.isArray(r.pages) ? r.pages.filter((p) => p && Array.isArray((p as { nodes?: unknown }).nodes)) : [];
+  const pages = goodPages.length ? goodPages : pre.pages;
   // 对账：unbound 节点的 suggest（角色+名称）若恰好有同定义的 locator，就绑到该 key
   for (const p of pages) {
     for (const n of p.nodes) {
