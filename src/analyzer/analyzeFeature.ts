@@ -7,7 +7,7 @@ import { compileMetaOpsAndFlows } from './compileFlows.js';
 import { retrieveFeatureCode } from './retrieve.js';
 import { extractPageModel } from './pageModel.js';
 import { extractFieldFacts, extractRenderedEditableFields } from './staticExtract.js';
-import { anchorToBaseline, formatBaselineForPrompt, loadBaselineArtifact, pruneUnrenderedFields } from './baselineAnchor.js';
+import { anchorToBaseline, formatBaselineForPrompt, loadBaselineArtifact, pruneUnrenderedFields, repairFromBaseline } from './baselineAnchor.js';
 import { llmAnalyzeFeature } from './llmAnalyze.js';
 import { locatePages, pickPageEntries } from './llmLocate.js';
 
@@ -64,7 +64,7 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
     maxTotalChars: opts.featureDir ? FEATURE_DIR_MAX_TOTAL_CHARS : undefined,
     baselineBlock: base ? formatBaselineForPrompt(base) : undefined,
   });
-  if (base) raw = anchorToBaseline(raw, base).artifact;
+  if (base) raw = repairFromBaseline(anchorToBaseline(raw, base).artifact, base).artifact;
   const knownElements = [
     ...Object.keys(await loadPlatformKit()),
     ...Object.keys(await loadFeatureElementsOverlay(opts.feature)),

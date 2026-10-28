@@ -41,8 +41,9 @@ export function formatBaselineForPrompt(base: FeatureArtifact): string {
       name: o.name,
       page_id: o.page_id,
       api: o.api,
-      steps: (o.steps ?? []).map((s) => ({ kind: s.kind, element: s.element, api: s.api })),
+      steps: (o.steps ?? []).map((s) => ({ kind: s.kind, name: s.name, page_id: s.page_id, element: s.element, api: s.api })),
     })),
+    elements_hints: base.elements_hints ?? [],
     field_rules: (base.field_rules ?? []).map((r) => ({
       name: r.name,
       label: r.label,
@@ -57,7 +58,8 @@ export function formatBaselineForPrompt(base: FeatureArtifact): string {
     '下面是改动前的分析骨架。要求：',
     '1. pages[].id、operations[].id、steps 的 kind/element 顺序，凡基线已有且源码未体现变化的，必须原样沿用，禁止改名、拆分、合并、重排；',
     '2. 只有源码中确有证据的增、删、改才允许与基线不同；新增 operation 的 id 沿用基线的命名风格；',
-    '3. 不要因为表述习惯不同而重写基线已有内容。',
+    '3. 不要因为表述习惯不同而重写基线已有内容；',
+    '4. 沿用基线 step 时必须保留其 page_id（goto 必须带 page_id）；沿用基线元素名时，elements_hints 里要给出同名定义（基线已有的可原样沿用）。',
     JSON.stringify(skeleton),
   ].join('\n');
 }
@@ -118,6 +120,53 @@ export function anchorToBaseline(
   };
   logger.info(report, '基线锚定完成');
   return { artifact: { ...artifact, operations: ops }, report };
+}
+
+export type RepairReport = { filledPageIds: string[]; reusedElements: string[] };
+
+/**
+ * 编译前兜底：模型沿用基线骨架时可能漏写 goto 的 page_id、漏带元素定义，导致步骤校验整体回退模板。
+ * 1. goto 缺 page_id 且所属能力有 page_id → 用能力的 page_id 补上（不覆盖已有值）；
+ * 2. step/requires 引用的元素在当前 elements_hints 缺失、基线里有同名定义 → 从基线补入，并写入 risks 留痕。
+ * 其余校验规则不放宽，补全后仍不合格的照常回退。
+ */
+export function repairFromBaseline(
+  artifact: FeatureArtifact,
+  base: FeatureArtifact,
+): { artifact: FeatureArtifact; report: RepairReport } {
+  const refName = (ref: string) => (ref.includes('.') ? ref.split('.').pop()! : ref);
+  const have = new Set((artifact.elements_hints ?? []).map((h) => refName(h.ref)));
+  const baseHints = new Map((base.elements_hints ?? []).map((h) => [refName(h.ref), h]));
+  const filledPageIds: string[] = [];
+  const reused = new Map<string, NonNullable<FeatureArtifact['elements_hints']>[number]>();
+
+  const operations = artifact.operations.map((op) => {
+    if (!op.steps?.length) return op;
+    const steps = op.steps.map((s, i) => {
+      if (s.kind === 'goto' && !s.page_id && op.page_id) {
+        filledPageIds.push(`${op.id}#${i + 1}`);
+        s = { ...s, page_id: op.page_id };
+      }
+      for (const name of [s.element, s.requires]) {
+        if (name && !have.has(name) && !reused.has(name) && baseHints.has(name)) reused.set(name, baseHints.get(name)!);
+      }
+      return s;
+    });
+    return { ...op, steps };
+  });
+
+  const reusedElements = [...reused.keys()];
+  const rs = artifact.review_suggestions;
+  const next: FeatureArtifact = {
+    ...artifact,
+    operations,
+    ...(reused.size ? { elements_hints: [...(artifact.elements_hints ?? []), ...reused.values()] } : {}),
+    ...(reused.size && rs
+      ? { review_suggestions: { ...rs, risks: [...(rs.risks ?? []), ...reusedElements.map((n) => `元素定义沿用基线：${n}`)] } }
+      : {}),
+  };
+  if (filledPageIds.length || reusedElements.length) logger.info({ filledPageIds, reusedElements }, '基线兜底补全');
+  return { artifact: next, report: { filledPageIds, reusedElements } };
 }
 
 /**
