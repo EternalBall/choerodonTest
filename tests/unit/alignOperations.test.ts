@@ -58,3 +58,62 @@ test('改名并变更描述的操作计入 changed 而非新增移除', () => {
   assert.equal(d.operations.removed.length, 0);
   assert.deepEqual(d.operations.changed.map((c) => c.id), ['dispatch.save@a']);
 });
+
+test('无接口信息时按步骤动作序列配对（忽略 @anchor 与 #n 后缀差异）', () => {
+  const chain = (id: string, actions: string[]) => actions.map((a) => `${id}${a}`);
+  const acts = ['_click_orgswitchbtn', '_fill_form_loginprodlineselect', '_click_expect_api_loginconfirmbtn'];
+  const before = base({
+    operations: [
+      op('dispatch.other@dispatch_orgSwitchBtn', { execution_chain: ['goto_dispatch', ...chain('dispatch.other@dispatch_orgSwitchBtn', acts)] }),
+    ],
+  });
+  const after = base({
+    operations: [
+      op('dispatch.other#2', {
+        execution_chain: ['goto_dispatch', ...chain('dispatch.other#2', [...acts.slice(0, 1), '_fill_form_loginworkcellselect', ...acts.slice(1)])],
+      }),
+    ],
+  });
+  const d = diffFeatureArtifacts(before, after);
+  assert.deepEqual(d.operation_renames, [{ from: 'dispatch.other@dispatch_orgSwitchBtn', to: 'dispatch.other#2' }]);
+  assert.equal(d.operations.added.length, 0);
+  assert.equal(d.operations.removed.length, 0);
+});
+
+test('同名基础 id 的多个操作按动作序列各自配对，不交叉', () => {
+  const ca = ['_click_a', '_fill_form_x', '_assert'];
+  const cb = ['_click_b', '_click_expect_api_y', '_assert'];
+  const before = base({
+    operations: [
+      op('dispatch.save@a', { execution_chain: ca.map((x) => `dispatch.save@a${x}`) }),
+      op('dispatch.save@b', { execution_chain: cb.map((x) => `dispatch.save@b${x}`) }),
+    ],
+  });
+  const after = base({
+    operations: [
+      op('dispatch.save#2', { execution_chain: cb.map((x) => `dispatch.save#2${x}`) }),
+      op('dispatch.save#3', { execution_chain: ca.map((x) => `dispatch.save#3${x}`) }),
+    ],
+  });
+  const { renamed } = alignOperations(before, after);
+  assert.deepEqual(
+    [...renamed].sort((x, y) => x.to.localeCompare(y.to)),
+    [
+      { from: 'dispatch.save@b', to: 'dispatch.save#2' },
+      { from: 'dispatch.save@a', to: 'dispatch.save#3' },
+    ],
+  );
+});
+
+test('同 id 但步骤不同的操作不误判为修改，新操作 id 冲突时加 ~added 后缀', () => {
+  const before = base({
+    operations: [op('dispatch.other#2', { execution_chain: ['dispatch.other#2_click_a', 'dispatch.other#2_click_b', 'dispatch.other#2_assert'] })],
+  });
+  const after = base({
+    operations: [op('dispatch.other#2', { execution_chain: ['dispatch.other#2_fill_form_x', 'dispatch.other#2_click_expect_api_y', 'dispatch.other#2_assert'] })],
+  });
+  const d = diffFeatureArtifacts(before, after);
+  assert.deepEqual(d.operations.changed, []);
+  assert.deepEqual(d.operations.removed.map((o) => o.id), ['dispatch.other#2']);
+  assert.deepEqual(d.operations.added.map((o) => o.id), ['dispatch.other#2~added']);
+});
