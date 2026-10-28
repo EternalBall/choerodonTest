@@ -22,6 +22,27 @@ function normApi(a: string): string {
   return a.replace(/\$\{[^}]*\}/g, '{p}').replace(/\{[^}]*\}/g, '{p}').replace(/\?.*$/, '').replace(/\/+$/, '');
 }
 
+/**
+ * 模型有时在 step 里写 elements_hints 的完整 ref（如 dispatch.saveBtn），而元素名约定取最后一段（saveBtn）。
+ * 仅当 element / requires 恰好等于某条 hint 的完整 ref 时才去掉前缀，其余原样保留，仍交给校验。
+ */
+export function normalizeStepElementRefs(artifact: FeatureArtifact): FeatureArtifact {
+  const full = new Map<string, string>();
+  for (const h of artifact.elements_hints ?? []) {
+    if (h.ref.includes('.')) full.set(h.ref, h.ref.split('.').pop()!);
+  }
+  if (!full.size) return artifact;
+  const fix = (v?: string) => (v && full.has(v) ? full.get(v) : v);
+  return {
+    ...artifact,
+    operations: (artifact.operations ?? []).map((op) =>
+      op.steps?.length
+        ? { ...op, steps: op.steps.map((s) => ({ ...s, element: fix(s.element), requires: fix(s.requires) })) }
+        : op,
+    ),
+  };
+}
+
 /** 收集产物里所有「有定义来源」的元素名：hints、控件、字段规则 + 外部传入的平台 kit/功能层键 */
 export function collectKnownElements(artifact: FeatureArtifact, extra: Iterable<string> = []): Set<string> {
   const known = new Set<string>(extra);

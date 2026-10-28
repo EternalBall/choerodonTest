@@ -70,3 +70,24 @@ test('repair：基线也没有的元素不补，仍交给校验回退', () => {
   assert.deepEqual(report.reusedElements, []);
   assert.equal(artifact.elements_hints!.length, 0);
 });
+
+test('normalizeStepElementRefs：step 里写完整 ref 时去掉前缀，其余原样保留', async () => {
+  const { normalizeStepElementRefs } = await import('../../src/analyzer/validateSteps.js');
+  const cur = withSteps(
+    [
+      { kind: 'click', name: 'a', element: 'dispatch.saveBtn' },
+      { kind: 'click', name: 'b', element: 'saveBtn', requires: 'dispatch.saveBtn' },
+      { kind: 'click', name: 'c', element: 'dispatch.ghostBtn' },
+    ],
+    [{ ref: 'dispatch.saveBtn', role: 'button', name: '保存' }],
+  );
+  const steps = normalizeStepElementRefs(cur).operations[0]!.steps!;
+  assert.deepEqual(steps.map((s) => s.element), ['saveBtn', 'saveBtn', 'dispatch.ghostBtn']);
+  assert.equal(steps[1]!.requires, 'saveBtn');
+});
+
+test('normalizeStepElementRefs：没有带点的 hint 时原对象返回', async () => {
+  const { normalizeStepElementRefs } = await import('../../src/analyzer/validateSteps.js');
+  const cur = withSteps([{ kind: 'click', name: 'a', element: 'saveBtn' }], [{ ref: 'saveBtn' }]);
+  assert.equal(normalizeStepElementRefs(cur), cur);
+});

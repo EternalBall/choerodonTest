@@ -7,6 +7,7 @@ import { compileMetaOpsAndFlows } from './compileFlows.js';
 import { retrieveFeatureCode } from './retrieve.js';
 import { extractPageModel } from './pageModel.js';
 import { extractFieldFacts, extractRenderedEditableFields } from './staticExtract.js';
+import { normalizeStepElementRefs } from './validateSteps.js';
 import { anchorToBaseline, formatBaselineForPrompt, loadBaselineArtifact, pruneUnrenderedFields, repairFromBaseline } from './baselineAnchor.js';
 import { llmAnalyzeFeature } from './llmAnalyze.js';
 import { locatePages, pickPageEntries } from './llmLocate.js';
@@ -70,6 +71,7 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
     ...Object.keys(await loadFeatureElementsOverlay(opts.feature)),
     ...Object.keys(located?.result.elements_draft[located.result.slug] ?? {}),
   ];
+  raw = normalizeStepElementRefs(raw);
   raw = pruneUnrenderedFields(raw, extractRenderedEditableFields(snippets)).artifact;
   const artifact = compileMetaOpsAndFlows(raw, { force: true, knownElements });
   if (located) {
