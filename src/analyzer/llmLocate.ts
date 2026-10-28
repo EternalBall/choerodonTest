@@ -43,7 +43,8 @@ export function pickPageEntries(snippets: { absolutePath: string; relativePath: 
 
 export function parseLocateResponse(text: string): unknown {
   const fence = text.match(/```(?:ya?ml|json)?\s*\n([\s\S]*?)```/);
-  const body = fence ? fence[1] : text;
+  // 无收尾围栏（输出被截断或模型漏写）时，去掉开头围栏行再解析
+  const body = fence ? fence[1] : text.replace(/^\s*```(?:ya?ml|json)?[ \t]*\r?\n/, '');
   return YAML.parse(body);
 }
 

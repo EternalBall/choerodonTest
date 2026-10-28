@@ -362,3 +362,12 @@ describe('llm 应答整形', () => {
     assert.equal(r.locators.extraKey.evidence, 'a/index.tsx L1 表单');
   });
 });
+
+describe('parseLocateResponse', () => {
+  it('只有开头围栏、缺收尾围栏时仍可解析', async () => {
+    const { parseLocateResponse } = await import('../../src/analyzer/llmLocate.js');
+    assert.deepEqual(parseLocateResponse('```yaml\nconfidence: 0.5\npages:\n  - id: list\n'), { confidence: 0.5, pages: [{ id: 'list' }] });
+    assert.deepEqual(parseLocateResponse('```yaml\na: 1\n```\n'), { a: 1 });
+    assert.deepEqual(parseLocateResponse('a: 1\n'), { a: 1 });
+  });
+});
