@@ -45,7 +45,9 @@ export function parseLocateResponse(text: string): unknown {
   const fence = text.match(/```(?:ya?ml|json)?\s*\n([\s\S]*?)```/);
   // 无收尾围栏（输出被截断或模型漏写）时，去掉开头围栏行再解析
   const body = fence ? fence[1] : text.replace(/^\s*```(?:ya?ml|json)?[ \t]*\r?\n/, '');
-  return YAML.parse(body);
+  // 模型常把以反引号开头的列表项写成未加引号的纯文本，YAML 无法解析
+  const quoted = body.replace(/^(\s*- )(`[^\n]*)$/gm, (_, pre: string, rest: string) => `${pre}${JSON.stringify(rest)}`);
+  return YAML.parse(quoted);
 }
 
 /** 模型常把 locator.evidence 写成 [{file,note}] 列表（与节点 evidence 混淆）：统一压成一行字符串，其余非字符串字段丢弃 */
