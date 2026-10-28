@@ -415,6 +415,18 @@ export async function llmAnalyzeFeature(opts: {
     'DeepSeek 分析完成',
   );
 
+  const stepStats = artifact.operations.map((o) => {
+    const steps = o.steps ?? [];
+    return { id: o.id, total: steps.length, missing_evidence: steps.filter((s) => !s.evidence).length };
+  });
+  const lacking = stepStats.filter((s) => s.missing_evidence > 0);
+  if (lacking.length) {
+    logger.warn(
+      { operations: lacking, total_steps: stepStats.reduce((n, s) => n + s.total, 0) },
+      'DeepSeek 步骤缺少 evidence，请核对源码依据是否齐全',
+    );
+  }
+
   return artifact;
 }
 
