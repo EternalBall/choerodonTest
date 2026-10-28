@@ -6,6 +6,7 @@ import { diffFieldFacts, diffRuleLists, type FieldDiffItem, type ListDiffItem } 
 import { attachFieldFactsToFlows } from './linkFieldFacts.js';
 import { diffFlowChains, type FlowChainDiff } from './resolveFlow.js';
 import { diffPageModel, pageModelChanged, type PageModelDiff } from './diffPageModel.js';
+import { alignOperations, type OperationRename } from './alignOperations.js';
 
 type Operation = z.infer<typeof OperationSchema>;
 
@@ -20,6 +21,8 @@ export type ArtifactDiff = {
   /** true：连元素名/args/状态词等自由取值也比；默认 false（稳定模式） */
   strict: boolean;
   operations: IdDiff<Operation>;
+  /** 按接口相似度判定为改名、已在对比前还原 id 的操作 */
+  operation_renames: OperationRename[];
   meta_ops: IdDiff<MetaOp>;
   flows: IdDiff<Flow> & { sequenceChanged: { id: string; before: string[]; after: string[] }[] };
   /** 完整流程链比对（主轴） */
@@ -101,10 +104,11 @@ function diffById<T extends { id: string }>(
 
 export function diffFeatureArtifacts(
   before: FeatureArtifact,
-  after: FeatureArtifact,
+  rawAfter: FeatureArtifact,
   opts?: { strict?: boolean },
 ): ArtifactDiff {
   const strict = opts?.strict ?? false;
+  const { after, renamed: operation_renames } = alignOperations(before, rawAfter);
   const operations = diffById(before.operations, after.operations, (op) => {
     const pick: Record<string, unknown> = {};
     for (const f of OP_COMPARE_FIELDS) {
@@ -140,6 +144,7 @@ export function diffFeatureArtifacts(
   return {
     strict,
     operations,
+    operation_renames,
     meta_ops,
     flows,
     flow_chains,

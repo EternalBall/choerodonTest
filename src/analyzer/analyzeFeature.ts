@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { logger } from '../core/logger.js';
 import type { FeatureArtifact } from '../core/schema.js';
+import { assignStableOperationIds } from '../core/operationId.js';
 import { loadPlaybooksForSources } from '../knowledge/loadPlaybooks.js';
 import { loadFeatureElementsOverlay, loadPlatformKit } from '../knowledge/platformKit.js';
 import { compileMetaOpsAndFlows } from './compileFlows.js';
@@ -72,6 +73,7 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
     ...Object.keys(located?.result.elements_draft[located.result.slug] ?? {}),
   ];
   raw = normalizeStepElementRefs(raw);
+  raw = assignStableOperationIds(raw);
   raw = pruneUnrenderedFields(raw, extractRenderedEditableFields(snippets)).artifact;
   const artifact = compileMetaOpsAndFlows(raw, { force: true, knownElements });
   if (located) {
