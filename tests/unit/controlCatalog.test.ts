@@ -45,3 +45,21 @@ export default function P() { return <Button>&lt; 上一班次</Button>; }
   const cat = buildControlCatalog([{ relativePath: 'e.js', absolutePath: '/x/e.js', content: ent }]);
   assert.equal(cat[0]?.label, '< 上一班次');
 });
+
+test('Modal.open 弹出的控件 state 为 after:<触发它的控件>', () => {
+  const lines = [
+    "import { Button, Modal } from 'hzero-ui';",
+    'export default function P() {',
+    '  const open = () => { Modal.open({ children: <Button>确定</Button> }); };',
+    '  return (',
+    '    <Button onClick={() => open()}>打开</Button>',
+    '  );',
+    '}',
+  ];
+  const cat = buildControlCatalog([{ relativePath: 'p.js', absolutePath: '/x/p.js', content: lines.join('\n') }]);
+  const ok = cat.find((c) => c.label === '确定');
+  const opener = cat.find((c) => c.label === '打开');
+  assert.ok(ok && opener);
+  assert.equal(ok.state, `after:p.js:${opener.line}`);
+  assert.equal(opener.line, 5);
+});
