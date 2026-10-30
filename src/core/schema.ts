@@ -335,6 +335,7 @@ export const ElementHintSchema = z.object({
   text: z.string().optional(),
   css: z.string().optional(),
   within: z.string().optional(),
+  state: z.string().optional(),
   note: z.string().optional(),
 });
 
