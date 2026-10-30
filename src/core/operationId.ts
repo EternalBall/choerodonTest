@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { FeatureArtifact } from './schema.js';
 
 type Op = FeatureArtifact['operations'][number];
@@ -26,6 +27,15 @@ export function triggerAnchor(op: Op): string {
 
 const stepSignature = (op: Op) => (op.steps ?? []).map((st) => `${st.kind}:${st.element ?? ''}:${st.api ?? ''}`).join('|');
 
+const shortHash = (s: string) => createHash('sha256').update(s).digest('hex').slice(0, 6);
+
+/** 同键冲突时的区分后缀：取源码控件 key，其次操作名，都不唯一时用步骤签名哈希；不依赖出现顺序 */
+function distinctiveSuffix(op: Op, anchor: string, taken: Set<string>): string {
+  const elements = (op.steps ?? []).map((st) => clean(st.element ?? '')).filter((e) => e && e !== anchor);
+  const hit = [...elements, clean(op.name ?? '')].find((c) => c && !taken.has(c));
+  return hit ?? shortHash(stepSignature(op));
+}
+
 export function stableBaseId(op: Op): string {
   const page = clean(op.page_id || op.page || '') || 'page';
   const key = op.api ? clean(normalizeApi(op.api)) : clean(op.type);
@@ -48,10 +58,14 @@ export function assignStableOperationIds(artifact: FeatureArtifact): FeatureArti
     return [...m.values()].filter((g) => g.length > 1);
   };
   for (const g of groups(ids)) {
+    const anchor = triggerAnchor(ops[g[0]!]!);
     const ordered = [...g].sort((a, b) => stepSignature(ops[a]!).localeCompare(stepSignature(ops[b]!)) || a - b);
-    ordered.slice(1).forEach((i, k) => {
-      ids[i] = `${ids[i]}#${k + 2}`;
-    });
+    const taken = new Set<string>();
+    for (const i of ordered) {
+      const suffix = distinctiveSuffix(ops[i]!, anchor, taken);
+      taken.add(suffix);
+      ids[i] = `${ids[i]}+${suffix}`;
+    }
   }
 
   const oldCount = new Map<string, number>();
