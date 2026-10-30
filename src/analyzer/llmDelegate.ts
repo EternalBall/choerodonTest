@@ -32,20 +32,21 @@ export function delegateChat(
   run: DelegateRunner = defaultRunner,
 ): { content: string; model: string } {
   const payload = handoffPayload(opts);
-  const key = handoffKey(payload);
+  const lane = process.env.LLM_DELEGATE_LANE || 'haiku';
+  const keyed = { ...payload, lane };
+  const key = handoffKey(keyed);
   const dir = handoffDir();
   const requestFile = path.join(dir, `${key}.request.json`);
   const responseFile = path.join(dir, `${key}.response.txt`);
 
-  // 已有应答（人工或上次自动）直接复用，保证幂等
-  if (fs.existsSync(responseFile)) {
+  // 已有应答（人工或上次自动）直接复用，保证幂等；LLM_HANDOFF_REUSE=0 时强制重新调用
+  if (process.env.LLM_HANDOFF_REUSE !== '0' && fs.existsSync(responseFile)) {
     const cached = fs.readFileSync(responseFile, 'utf8').trim();
     if (cached) return { content: cached, model: 'handoff-agent' };
   }
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(requestFile, JSON.stringify(payload, null, 2), 'utf8');
 
-  const lane = process.env.LLM_DELEGATE_LANE || 'haiku';
   const outFile = path.join(dir, `${key}.delegate.out.txt`);
   const taskFile = path.join(dir, `${key}.delegate.task.txt`);
   fs.writeFileSync(taskFile, buildDelegateTask(requestFile, payload.responseFormatJson), 'utf8');
