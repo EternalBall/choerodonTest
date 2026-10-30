@@ -147,3 +147,37 @@ test('所在容器取最近一层带文案的 Tab，指纹随页签变化而区�
   assert.deepEqual(btns.map((c) => c.id.split('|')[3]), ['Tab:已派工单', 'Tab:待派工单']);
   assert.ok(btns.every((c) => !c.ambiguous));
 });
+
+test('Table 按绑定的数据集及其请求地址区分，不再同名冲突', () => {
+  const ds = [
+    "const Host = 'h';",
+    'const tenantId = 1;',
+    'const aDS = () => ({',
+    '  transport: { read: () => ({ url: `${Host}/v1/${tenantId}/x/a/query` }) },',
+    '});',
+    'const bDS = () => ({',
+    '  transport: { read: () => ({ url: `${Host}/v1/${tenantId}/x/b/info` }) },',
+    '});',
+  ].join('\n');
+  const page = [
+    "import { Table } from 'hzero-ui';",
+    "import { aDS, bDS } from './ds';",
+    'export default function P() {',
+    '  const dsA = new DataSet({ ...aDS() });',
+    '  const dsB = new DataSet({ ...bDS() });',
+    '  return (<div>',
+    '    <Table dataSet={dsA} />',
+    '    <Table dataSet={dsB} />',
+    '  </div>);',
+    '}',
+  ].join('\n');
+  const cat = buildControlCatalog([
+    { relativePath: 'ds.js', absolutePath: '/x/ds.js', content: ds },
+    { relativePath: 'p.js', absolutePath: '/x/p.js', content: page },
+  ]);
+  const tables = cat.filter((c) => c.tag === 'Table');
+  assert.equal(tables.length, 2);
+  assert.ok(tables.every((c) => !c.ambiguous));
+  assert.equal(tables[0].id.split('|')[4], 'dataSet:dsA@/v1/x/a/query');
+  assert.equal(tables[1].id.split('|')[4], 'dataSet:dsB@/v1/x/b/info');
+});

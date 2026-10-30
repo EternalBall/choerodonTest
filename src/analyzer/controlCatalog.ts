@@ -3,7 +3,7 @@ import { pruneJsxSource, type PrunedFile, type PrunedNode } from './pruneJsx.js'
 
 /** 源码中枚举出的一个控件：id 为 文件:行号，状态由静态结构确定，不交给 LLM 判断 */
 export type CatalogControl = {
-  /** 语义指纹：文件|标签|文案|所在容器|触发函数；同指纹冲突时追加 #序号 并 ambiguous=true（不含行号） */
+  /** 语义指纹：文件|标签|文案|所在容器|触发函数（Table 等绑定数据集的控件为 dataSet:表达式@请求地址）；同指纹冲突时追加 #序号 并 ambiguous=true（不含行号） */
   id: string;
   file: string;
   line: number;
@@ -162,8 +162,36 @@ function findOpenerLine(
   return undefined;
 }
 
+/**
+ * 全部源码中顶层具名函数 → 其中首个请求地址（去掉 ${} 占位与重复斜杠，如 `/v1/hme-production-capacitys/wo/dispatch/query`）。
+ * 只看顶层声明，避免把函数内部的局部变量误当成函数边界。
+ */
+function apiByFnName(files: { content: string }[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const f of files) {
+    const decls = [...f.content.matchAll(/^(?:export\s+)?(?:const|let|var|function)\s+(\w+)/gm)];
+    decls.forEach((d, i) => {
+      const seg = f.content.slice(d.index ?? 0, decls[i + 1]?.index ?? f.content.length);
+      const url = seg.match(/url:\s*[`'"]([^`'"]*)[`'"]/);
+      if (url && !out.has(d[1])) out.set(d[1], url[1].replace(/\$\{[^}]*\}/g, '').replace(/\/{2,}/g, '/'));
+    });
+  }
+  return out;
+}
+
+/** 单个文件中数据集变量 → 其展开的数据集函数名：`const dataSet = new DataSet({ ...tableDS() })` */
+function dataSetFnByVar(content: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of content.matchAll(/(?:const|let|var)\s+(\w+)\s*=\s*new\s+DataSet\(\s*\{\s*\.\.\.(\w+)\(\)/g)) out.set(m[1], m[2]);
+  return out;
+}
+
 /** 遍历一个裁剪后的文件，列出其中所有控件（草稿，id 在 buildControlCatalog 中统一生成） */
-export function draftsFromPruned(pf: PrunedFile, content?: string): Draft[] {
+export function draftsFromPruned(
+  pf: PrunedFile,
+  content?: string,
+  apiOfDataSet?: (expr: string) => string | undefined,
+): Draft[] {
   const out: Draft[] = [];
   const scan = content !== undefined ? scanOpeners(content, pf.file) : undefined;
   const handlerAt = (line: number): string => {
@@ -179,6 +207,13 @@ export function draftsFromPruned(pf: PrunedFile, content?: string): Draft[] {
     // 所在容器取最近一层带文案的容器（弹窗/抽屉/页签/表单等），没有则沿用外层
     let ctx = ctxOf(n) ?? ctxIn;
     if (isControlNode(n)) {
+      // Table 等绑定数据集的控件：用 dataSet 表达式（及其请求地址）区分同名表格
+      let handler = handlerAt(n.line);
+      if (typeof n.props.dataSet === 'string') {
+        const expr = n.props.dataSet.replace(/^\{|\}$/g, '').trim();
+        const api = apiOfDataSet?.(expr);
+        handler = `dataSet:${expr}${api ? `@${api}` : ''}`;
+      }
       let state = 'always';
       let note = '';
       let openerLine: number | undefined;
@@ -211,7 +246,7 @@ export function draftsFromPruned(pf: PrunedFile, content?: string): Draft[] {
         label: labelOf(n),
         state,
         note,
-        handler: handlerAt(n.line),
+        handler,
         ctx,
         openerLine,
       });
@@ -225,10 +260,16 @@ export function draftsFromPruned(pf: PrunedFile, content?: string): Draft[] {
 /** 对所有源码片段生成控件目录：生成语义指纹 id，并把 after 引用换成触发控件的 id */
 export function buildControlCatalog(files: { relativePath: string; absolutePath: string; content: string }[]): CatalogControl[] {
   const drafts: Draft[] = [];
+  const apiByFn = apiByFnName(files);
   for (const f of files) {
     if (!/\.(jsx?|tsx?)$/.test(f.relativePath)) continue;
     const pf = pruneJsxSource(f.content, f.relativePath, f.absolutePath);
-    drafts.push(...draftsFromPruned(pf, f.content));
+    const fnOfVar = dataSetFnByVar(f.content);
+    const apiOf = (expr: string) => {
+      const fn = fnOfVar.get(expr);
+      return fn ? apiByFn.get(fn) : undefined;
+    };
+    drafts.push(...draftsFromPruned(pf, f.content, apiOf));
   }
   // 1) 语义指纹（不含行号）；同指纹出现多次时按出现顺序加 #序号，并标记 ambiguous
   const base = (d: Draft) => `${d.file}|${d.tag}|${d.label}|${d.ctx}|${d.handler}`;
