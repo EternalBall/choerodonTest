@@ -63,3 +63,19 @@ test('Modal.open 弹出的控件 state 为 after:<触发它的控件>', () => {
   assert.equal(ok.state, `after:p.js:${opener.line}`);
   assert.equal(opener.line, 5);
 });
+
+test('useEffect 挂载时调用、内部 Modal.open 的弹窗控件为 always（进入功能自动弹出）', () => {
+  const lines = [
+    "import React, { useEffect } from 'react';",
+    "import { Button, Modal } from 'hzero-ui';",
+    'export default function P() {',
+    '  const login = () => { Modal.open({ children: <Button>登录</Button> }); };',
+    '  useEffect(() => { login(); }, []);',
+    '  return <div />;',
+    '}',
+  ];
+  const cat = buildControlCatalog([{ relativePath: 'q.js', absolutePath: '/x/q.js', content: lines.join('\n') }]);
+  const btn = cat.find((c) => c.label === '登录');
+  assert.equal(btn?.state, 'always');
+  assert.ok(btn?.note.includes('自动弹出'));
+});

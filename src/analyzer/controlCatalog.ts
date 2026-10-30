@@ -44,7 +44,7 @@ function condNote(branch: string[] | undefined): string {
 type Range = { start: number; end: number };
 type OpenSite = Range & { fn?: string };
 type ClickSite = Range & { line: number; refs: Set<string> };
-type CallSite = { callee: string; fn?: string };
+type CallSite = { callee: string; fn?: string; inEffect: boolean };
 
 /** 扫描源码：Modal.open 调用、onClick 属性及其引用的标识符、函数间调用关系 */
 function scanOpeners(content: string, absPath: string) {
@@ -60,6 +60,13 @@ function scanOpeners(content: string, absPath: string) {
     }
     return undefined;
   };
+  /** 调用处是否位于 useEffect 回调内：页面进入时自动执行，不依赖用户点击 */
+  const inEffect = (n: ts.Node): boolean => {
+    for (let up = n.parent; up; up = up.parent) {
+      if (ts.isCallExpression(up) && up.expression.getText(sf) === 'useEffect') return true;
+    }
+    return false;
+  };
   const opens: OpenSite[] = [];
   const clicks: ClickSite[] = [];
   const calls: CallSite[] = [];
@@ -69,7 +76,7 @@ function scanOpeners(content: string, absPath: string) {
       if (OPEN_CALLEES.test(callee)) {
         opens.push({ start: lineOf(n), end: endLineOf(n), fn: fnName(n) });
       } else if (ts.isIdentifier(n.expression)) {
-        calls.push({ callee: n.expression.text, fn: fnName(n) });
+        calls.push({ callee: n.expression.text, fn: fnName(n), inEffect: inEffect(n) });
       }
     }
     if (ts.isJsxAttribute(n) && n.name.getText(sf) === 'onClick' && n.initializer && ts.isJsxExpression(n.initializer)) {
@@ -88,15 +95,17 @@ function scanOpeners(content: string, absPath: string) {
   return { opens, clicks, calls };
 }
 
-/** 从弹窗的打开点向上追溯：找到哪个 onClick 最终触发了它（最多追溯 MAX_DEPTH 层函数调用） */
+/** 从弹窗的打开点向上追溯：返回 'enter'（页面进入时自动弹出）、触发它的 onClick 行号，或 undefined */
 function findOpenerLine(
   open: OpenSite,
   scan: ReturnType<typeof scanOpeners>,
-): number | undefined {
+): number | 'enter' | undefined {
   const inside = scan.clicks.find((c) => open.start >= c.start && open.end <= c.end);
   if (inside) return inside.line;
   let name = open.fn;
   for (let depth = 0; name && depth < MAX_DEPTH; depth++) {
+    // useEffect 里调用（如页面挂载时 login()）优先于点击：进入功能即弹出
+    if (scan.calls.some((c) => c.callee === name && c.inEffect)) return 'enter';
     const direct = scan.clicks.find((c) => c.refs.has(name!));
     if (direct) return direct.line;
     const caller = scan.calls.find((c) => c.callee === name && c.fn && c.fn !== name);
@@ -124,7 +133,10 @@ export function catalogFromPruned(pf: PrunedFile, content?: string): CatalogCont
       } else if (overlay) {
         const open = scan?.opens.find((o) => n.line >= o.start && n.line <= o.end);
         const openerLine = open && scan ? findOpenerLine(open, scan) : undefined;
-        if (openerLine !== undefined) {
+        if (openerLine === 'enter') {
+          state = 'always';
+          note = '进入功能时自动弹出（useEffect 挂载时调用）';
+        } else if (openerLine !== undefined) {
           state = `after:${pf.file}:${openerLine}`;
           note = `点击 ${pf.file}:${openerLine} 后弹出`;
         } else {

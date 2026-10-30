@@ -17,6 +17,7 @@ import {
   resolveOutputSlugForFeature,
   slugFromArtifactInputPath,
   findLatestOutputSlug,
+  featureArtifactDir,
 } from '../core/featurePaths.js';
 import { logger } from '../core/logger.js';
 import { PATHS } from '../core/paths.js';
@@ -36,6 +37,7 @@ import { diffFeatureArtifacts } from '../compare/diffArtifact.js';
 import { readBaselineManifest, snapshotBaseline } from '../compare/snapshot.js';
 import { maybePromptArchiveV1BeforeGen } from './promptArchiveBeforeGen.js';
 import { retrieveFeatureCode } from '../analyzer/retrieve.js';
+import { buildControlCatalog } from '../analyzer/controlCatalog.js';
 import { extractFieldFacts } from '../analyzer/staticExtract.js';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import readline from 'node:readline';
@@ -236,6 +238,31 @@ program
     console.log(`已有条目未动 ${r.keptExisting.length}${r.keptExisting.length ? `：${r.keptExisting.join('、')}` : ''}`);
     console.log(`探测未通过、未采纳 ${r.notOk.length}${r.notOk.length ? `：${r.notOk.join('、')}` : ''}`);
     if (r.backup) console.log(`原文件备份: ${r.backup}`);
+  });
+
+program
+  .command('catalog')
+  .description('枚举功能源码目录中的全部控件及其 state（由渲染结构确定，不调用 LLM），写入 artifacts/<功能>/control-catalog.json')
+  .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)
+  .requiredOption('-f, --feature <name>', '功能名')
+  .requiredOption('-d, --dir <path>', '功能源码目录，读取该目录下完整文件')
+  .action(async (opts: { project: string; feature: string; dir: string }) => {
+    const { snippets } = await retrieveFeatureCode({
+      feature: opts.feature,
+      projectRoot: opts.project,
+      featureDir: opts.dir,
+    });
+    const controls = buildControlCatalog(snippets);
+    const dir = featureArtifactDir(opts.feature);
+    await fs.mkdir(dir, { recursive: true });
+    const out = path.join(dir, 'control-catalog.json');
+    await fs.writeFile(out, JSON.stringify({ feature: opts.feature, source_dir: opts.dir, controls }, null, 2), 'utf8');
+    const dist: Record<string, number> = {};
+    for (const c of controls) {
+      const k = c.state.split(':')[0];
+      dist[k] = (dist[k] ?? 0) + 1;
+    }
+    console.log(`控件 ${controls.length} 个 ${JSON.stringify(dist)} → ${out}`);
   });
 
 program
