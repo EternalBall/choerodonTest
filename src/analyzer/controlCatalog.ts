@@ -3,6 +3,7 @@ import { pruneJsxSource, type PrunedFile, type PrunedNode } from './pruneJsx.js'
 
 /** 源码中枚举出的一个控件：id 为 文件:行号，状态由静态结构确定，不交给 LLM 判断 */
 export type CatalogControl = {
+  /** 语义指纹：文件|标签|文案|所在弹窗|触发函数；同指纹冲突时追加 #序号 并 ambiguous=true */
   id: string;
   file: string;
   line: number;
@@ -10,6 +11,13 @@ export type CatalogControl = {
   label: string;
   state: string; // always | data_dependent | unknown | after:<触发控件 id>
   note: string;
+  ambiguous?: boolean;
+};
+
+type Draft = Omit<CatalogControl, 'id' | 'ambiguous'> & {
+  handler: string;
+  ctx: string;
+  openerLine?: number;
 };
 
 const CONTROL_TAG = /^(Button|Input|Select|Checkbox|Radio|Switch|Table|Modal|Drawer|Tabs|Tab|DatePicker|RangePicker|Upload|Pagination|TextArea|InputNumber|Dropdown|Menu|Tooltip|Form|Popconfirm)$/;
@@ -114,31 +122,38 @@ function findOpenerLine(
   return undefined;
 }
 
-/** 遍历一个裁剪后的文件，列出其中所有控件；条件/弹窗标记沿子树继承 */
-export function catalogFromPruned(pf: PrunedFile, content?: string): CatalogControl[] {
-  const out: CatalogControl[] = [];
+/** 遍历一个裁剪后的文件，列出其中所有控件（草稿，id 在 buildControlCatalog 中统一生成） */
+export function draftsFromPruned(pf: PrunedFile, content?: string): Draft[] {
+  const out: Draft[] = [];
   const scan = content !== undefined ? scanOpeners(content, pf.file) : undefined;
-  const walk = (n: PrunedNode, overlayIn: boolean, cond: boolean, branch: string[] | undefined) => {
+  const handlerAt = (line: number): string => {
+    const c = scan?.clicks.find((x) => x.line === line);
+    return c ? ([...c.refs][0] ?? '') : '';
+  };
+  const walk = (n: PrunedNode, overlayIn: boolean, cond: boolean, branch: string[] | undefined, ctxIn: string) => {
     const c = n.conditional || cond;
     const b = n.branch ?? branch;
     // JSX 形式的 Modal / Drawer：自身与其子树都属于弹窗内容（显隐由外部状态控制）
     const container = /^(Modal|Drawer)$/.test(lastSeg(n.tag));
     const overlay = overlayIn || container;
+    const ctx = container ? `${lastSeg(n.tag)}:${typeof n.props.title === 'string' ? n.props.title : ''}` : ctxIn;
     if (isControlNode(n)) {
       let state = 'always';
       let note = '';
+      let openerLine: number | undefined;
       if (container) {
         state = 'unknown';
         note = '弹窗/抽屉容器，显示条件待确认';
       } else if (overlay) {
         const open = scan?.opens.find((o) => n.line >= o.start && n.line <= o.end);
-        const openerLine = open && scan ? findOpenerLine(open, scan) : undefined;
-        if (openerLine === 'enter') {
+        const r = open && scan ? findOpenerLine(open, scan) : undefined;
+        if (r === 'enter') {
           state = 'always';
           note = '进入功能时自动弹出（useEffect 挂载时调用）';
-        } else if (openerLine !== undefined) {
-          state = `after:${pf.file}:${openerLine}`;
-          note = `点击 ${pf.file}:${openerLine} 后弹出`;
+        } else if (typeof r === 'number') {
+          openerLine = r;
+          state = 'after:(opener)'; // 占位，buildControlCatalog 中替换为触发控件的 id
+          note = `点击 ${pf.file}:${r} 后弹出`;
         } else {
           state = 'unknown';
           note = '位于弹窗/抽屉内，未能追溯打开它的控件';
@@ -147,26 +162,55 @@ export function catalogFromPruned(pf: PrunedFile, content?: string): CatalogCont
         state = 'data_dependent';
         note = condNote(b);
       }
-      out.push({ id: `${pf.file}:${n.line}`, file: pf.file, line: n.line, tag: n.tag, label: labelOf(n), state, note });
+      out.push({
+        file: pf.file,
+        line: n.line,
+        tag: n.tag,
+        label: labelOf(n),
+        state,
+        note,
+        handler: handlerAt(n.line),
+        ctx,
+        openerLine,
+      });
     }
-    for (const ch of n.children) walk(ch, overlay, c, b);
+    for (const ch of n.children) walk(ch, overlay, c, b, ctx);
   };
-  pf.roots.forEach((r, i) => walk(r, !!pf.rootOverlay[i], false, undefined));
+  pf.roots.forEach((r, i) => walk(r, !!pf.rootOverlay[i], false, undefined, ''));
   return out;
 }
 
-/** 对所有源码片段生成控件目录（同一 id 去重） */
+/** 对所有源码片段生成控件目录：生成语义指纹 id，并把 after 引用换成触发控件的 id */
 export function buildControlCatalog(files: { relativePath: string; absolutePath: string; content: string }[]): CatalogControl[] {
-  const seen = new Set<string>();
-  const all: CatalogControl[] = [];
+  const drafts: Draft[] = [];
   for (const f of files) {
     if (!/\.(jsx?|tsx?)$/.test(f.relativePath)) continue;
     const pf = pruneJsxSource(f.content, f.relativePath, f.absolutePath);
-    for (const c of catalogFromPruned(pf, f.content)) {
-      if (seen.has(c.id)) continue;
-      seen.add(c.id);
-      all.push(c);
-    }
+    drafts.push(...draftsFromPruned(pf, f.content));
   }
-  return all;
+  // 1) 语义指纹（不含行号）；同指纹出现多次时按出现顺序加 #序号，并标记 ambiguous
+  const base = (d: Draft) => `${d.file}|${d.tag}|${d.label}|${d.ctx}|${d.handler}`;
+  const total = new Map<string, number>();
+  for (const d of drafts) total.set(base(d), (total.get(base(d)) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  const idOf = new Map<string, string>(); // file:line -> id
+  const controls: CatalogControl[] = drafts.map((d) => {
+    const key = base(d);
+    const k = (seen.get(key) ?? 0) + 1;
+    seen.set(key, k);
+    const ambiguous = (total.get(key) ?? 1) > 1;
+    const id = ambiguous ? `${key}#${k}` : key;
+    idOf.set(`${d.file}:${d.line}`, id);
+    return { id, file: d.file, line: d.line, tag: d.tag, label: d.label, state: d.state, note: d.note, ...(ambiguous ? { ambiguous: true } : {}) };
+  });
+  // 2) after 引用：把打开行号换成触发控件的语义 id；找不到则退回 unknown
+  for (let i = 0; i < controls.length; i++) {
+    const d = drafts[i];
+    if (d.openerLine === undefined) continue;
+    const target = idOf.get(`${d.file}:${d.openerLine}`);
+    controls[i] = target
+      ? { ...controls[i], state: `after:${target}` }
+      : { ...controls[i], state: 'unknown', note: '位于弹窗/抽屉内，触发控件不在目录中' };
+  }
+  return controls;
 }

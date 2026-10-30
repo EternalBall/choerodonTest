@@ -60,7 +60,7 @@ test('Modal.open 弹出的控件 state 为 after:<触发它的控件>', () => {
   const ok = cat.find((c) => c.label === '确定');
   const opener = cat.find((c) => c.label === '打开');
   assert.ok(ok && opener);
-  assert.equal(ok.state, `after:p.js:${opener.line}`);
+  assert.equal(ok.state, `after:${opener.id}`);
   assert.equal(opener.line, 5);
 });
 
@@ -78,4 +78,26 @@ test('useEffect 挂载时调用、内部 Modal.open 的弹窗控件为 always（
   const btn = cat.find((c) => c.label === '登录');
   assert.equal(btn?.state, 'always');
   assert.ok(btn?.note.includes('自动弹出'));
+});
+
+test('语义指纹 id 不随行号变化：上方插入控件不改变其它控件的 id', () => {
+  const base = "import { Button, Modal } from 'hzero-ui';\nexport default function P() {\n  return (\n    <div>\n      <Button onClick={() => save()}>保存</Button>\n    </div>\n  );\n}\n";
+  const shifted = base.replace('<div>', '<div>\n      <Button>新增</Button>');
+  const a = buildControlCatalog([{ relativePath: 's.js', absolutePath: '/x/s.js', content: base }]);
+  const b = buildControlCatalog([{ relativePath: 's.js', absolutePath: '/x/s.js', content: shifted }]);
+  const idA = a.find((c) => c.label === '保存')?.id;
+  const idB = b.find((c) => c.label === '保存')?.id;
+  assert.ok(idA);
+  assert.equal(idA, idB);
+  assert.notEqual(a.find((c) => c.label === '保存')?.line, b.find((c) => c.label === '保存')?.line);
+});
+
+test('同指纹控件加 #序号并标记 ambiguous', () => {
+  const dup = "import { Button } from 'hzero-ui';\nexport default function P() {\n  return (<div><Button>取消</Button><Button>取消</Button></div>);\n}\n";
+  const cat = buildControlCatalog([{ relativePath: 'd.js', absolutePath: '/x/d.js', content: dup }]);
+  const cancels = cat.filter((c) => c.label === '取消');
+  assert.equal(cancels.length, 2);
+  assert.ok(cancels.every((c) => c.ambiguous === true));
+  assert.notEqual(cancels[0].id, cancels[1].id);
+  assert.ok(cancels[1].id.endsWith('#2'));
 });
