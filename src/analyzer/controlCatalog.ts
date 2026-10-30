@@ -50,7 +50,7 @@ function condNote(branch: string[] | undefined): string {
 }
 
 type Range = { start: number; end: number };
-type OpenSite = Range & { fn?: string };
+type OpenSite = Range & { fn?: string; title?: string };
 type ClickSite = Range & { line: number; refs: Set<string> };
 type CallSite = { callee: string; fn?: string; inEffect: boolean };
 
@@ -82,7 +82,18 @@ function scanOpeners(content: string, absPath: string) {
     if (ts.isCallExpression(n)) {
       const callee = n.expression.getText(sf);
       if (OPEN_CALLEES.test(callee)) {
-        opens.push({ start: lineOf(n), end: endLineOf(n), fn: fnName(n) });
+        // Modal.open({ title: intl.get(..).d('工单信息') }) 取 title 的文案作为弹窗标识
+        let title: string | undefined;
+        const arg = n.arguments[0];
+        if (arg && ts.isObjectLiteralExpression(arg)) {
+          const prop = arg.properties.find((p) => ts.isPropertyAssignment(p) && p.name.getText(sf) === 'title');
+          if (prop && ts.isPropertyAssignment(prop)) {
+            const t = prop.initializer.getText(sf);
+            const m = t.match(/\.d\(\s*['"`]([^'"`]+)['"`]/) ?? t.match(/^['"`]([^'"`]+)['"`]$/);
+            title = m?.[1];
+          }
+        }
+        opens.push({ start: lineOf(n), end: endLineOf(n), fn: fnName(n), title });
       } else if (ts.isIdentifier(n.expression)) {
         calls.push({ callee: n.expression.text, fn: fnName(n), inEffect: inEffect(n) });
       }
@@ -136,7 +147,7 @@ export function draftsFromPruned(pf: PrunedFile, content?: string): Draft[] {
     // JSX 形式的 Modal / Drawer：自身与其子树都属于弹窗内容（显隐由外部状态控制）
     const container = /^(Modal|Drawer)$/.test(lastSeg(n.tag));
     const overlay = overlayIn || container;
-    const ctx = container ? `${lastSeg(n.tag)}:${typeof n.props.title === 'string' ? n.props.title : ''}` : ctxIn;
+    let ctx = container ? `${lastSeg(n.tag)}:${typeof n.props.title === 'string' ? n.props.title : ''}` : ctxIn;
     if (isControlNode(n)) {
       let state = 'always';
       let note = '';
@@ -146,6 +157,7 @@ export function draftsFromPruned(pf: PrunedFile, content?: string): Draft[] {
         note = '弹窗/抽屉容器，显示条件待确认';
       } else if (overlay) {
         const open = scan?.opens.find((o) => n.line >= o.start && n.line <= o.end);
+        if (!ctx && open?.title) ctx = `Modal.open:${open.title}`;
         const r = open && scan ? findOpenerLine(open, scan) : undefined;
         if (r === 'enter') {
           state = 'always';
