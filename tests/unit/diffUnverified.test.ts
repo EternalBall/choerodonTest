@@ -26,3 +26,12 @@ test('没有 unknown 控件时行为不变', () => {
   assert.deepEqual(diff.operations.added.map((o) => o.id), ['b']);
   assert.deepEqual(diff.unverified_operations, []);
 });
+
+test('data_dependent 控件仍参与对比，只有 unknown 被排除', () => {
+  const hints = [{ ref: 'delMarkBtn', state: 'data_dependent' }];
+  const before = art([op('a', 'delMarkBtn')], hints);
+  const after = art([op('a', 'delMarkBtn'), op('b', 'delMarkBtn')], hints);
+  const diff = diffFeatureArtifacts(before, after);
+  assert.deepEqual(diff.operations.added.map((o) => o.id), ['b']);
+  assert.deepEqual(diff.unverified_operations, []);
+});

@@ -330,7 +330,7 @@ F. **接口识别（api-binding）**：
    - 第一步必须是 goto（page_id 取 pages[].id；详情页等带 :id 的路由，先 goto 列表再 open_detail 或点链接）
    - click / click_expect_api 必须写 element：优先用平台 kit 已有键（见 PLAYBOOK 与 kit），否则在 elements_hints 里给出同名定义；禁止凭空编名字
    - 页签、维度/视图切换标签等非按钮控件，同样用 click 步骤逐个写出，切换后的视图单独成步骤链（如切到拼卷视图后再查询、勾选）
-   - 隐藏控件（弹窗、抽屉、条件渲染、切换后才挂载的内容）：elements_hints 必须写 state——always（默认可见）、after:<触发控件 ref>（需先点击该控件）、unknown（源码无法确定出现条件）；禁止把隐藏控件标为 always；源码中找到渲染条件时在 note 里写出条件（如 visible、权限、数据非空）
+   - 隐藏控件（弹窗、抽屉、条件渲染、切换后才挂载的内容）：elements_hints 必须写 state——always（默认可见）、after:<触发控件 ref>（需先点击该控件）、data_dependent（源码中已找到渲染条件，但条件依赖运行时数据，如选中行有 tag、接口返回非空、权限）、unknown（源码中找不到出现条件）；禁止把隐藏控件标为 always；data_dependent 与 unknown 必须在 note 里写出条件或说明已查过的位置；不得仅因无法运行页面就标 unknown
    - 会发请求的最后一步用 click_expect_api，api 必须是源码字面量且出现在 apis[]；若点击后还有确认弹窗（Modal.confirm→confirmModalOk；Popconfirm→confirmBtn），接口断言放在确认那一步
    - 严格按手册还原交互：下拉菜单=先点触发按钮再点 dropdownMenuItem；抽屉内容区按钮（okButton:false）定位在 drawerBody 内；行内编辑=先点单元格再操作编辑器；头行联动表=先点头行再勾行
    - evidence 写依据（源码 文件#函数 或 手册名），拿不准的步骤在 note 里说明，不要编造
