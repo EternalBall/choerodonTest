@@ -111,6 +111,18 @@ function unverifiedRefs(a: FeatureArtifact): Set<string> {
 const touchesUnverified = (op: Operation, refs: Set<string>): boolean =>
   refs.size > 0 && (op.steps ?? []).some((s) => !!s.element && refs.has(s.element));
 
+export type VerificationItem = { id: string; name: string; refs: string[]; notes: string[] };
+
+/** 按元素提示的 state 列出引用了该状态控件的操作（state 取 unknown 或 data_dependent） */
+export function verificationItems(a: FeatureArtifact, state: string): VerificationItem[] {
+  const notes = new Map((a.elements_hints ?? []).filter((h) => h.state === state).map((h) => [h.ref, h.note ?? '']));
+  if (!notes.size) return [];
+  return a.operations.flatMap((o) => {
+    const refs = [...new Set((o.steps ?? []).map((s) => s.element).filter((e): e is string => !!e && notes.has(e)))];
+    return refs.length ? [{ id: o.id, name: o.name, refs, notes: refs.map((r) => notes.get(r) ?? '') }] : [];
+  });
+}
+
 function splitUnverified(a: FeatureArtifact): { artifact: FeatureArtifact; unverified: string[] } {
   const refs = unverifiedRefs(a);
   const unverified = a.operations.filter((o) => touchesUnverified(o, refs)).map((o) => o.id);

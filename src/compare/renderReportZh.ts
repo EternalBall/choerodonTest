@@ -3,6 +3,7 @@ import type { CompareDiffDocument } from './buildDiffYaml.js';
 import type { FieldDiffItem } from './diffFields.js';
 import type { AttrDiff, FieldChange, FormChange, ObjectChange } from './diffPageModel.js';
 import { linkedFieldFactKeys } from './linkFieldFacts.js';
+import { verificationItems, type VerificationItem } from './diffArtifact.js';
 import type { StepChange } from './resolveFlow.js';
 
 /**
@@ -371,6 +372,23 @@ function renderCore(opts: {
   if (changed.some((f) => flowFactCount(f) > 0)) tips.push('数据集字段与流程的关联按字段名（及查询类流程的 queryFields）匹配，不是源码里的直接调用边。');
   tips.forEach((t) => L.push(`- ${t}`));
   L.push('');
+
+  const section = (title: string, items: VerificationItem[]) => {
+    L.push(`### ${title}`);
+    L.push('');
+    if (!items.length) L.push('无。');
+    for (const it of items) {
+      const why = it.notes.filter(Boolean).join('；') || '未写明条件';
+      L.push(`- \`${it.id}\`（${it.name}）：控件 ${it.refs.join('、')}，${why}`);
+    }
+    L.push('');
+  };
+  const unknownItems = [...verificationItems(opts.before, 'unknown'), ...verificationItems(opts.after, 'unknown')];
+  const dependentItems = [...verificationItems(opts.before, 'data_dependent'), ...verificationItems(opts.after, 'data_dependent')];
+  L.push('## 五、待验证与依赖数据');
+  L.push('');
+  section('待验证（未参与对比）', unknownItems);
+  section('依赖数据（已参与对比，结果取决于运行时数据）', dependentItems);
   return L.join('\n');
 }
 

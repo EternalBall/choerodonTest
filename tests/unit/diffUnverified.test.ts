@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { diffFeatureArtifacts } from '../../src/compare/diffArtifact.js';
+import { diffFeatureArtifacts, verificationItems } from '../../src/compare/diffArtifact.js';
 import type { FeatureArtifact } from '../../src/core/schema.js';
 
 const op = (id: string, element?: string) =>
@@ -34,4 +34,11 @@ test('data_dependent 控件仍参与对比，只有 unknown 被排除', () => {
   const diff = diffFeatureArtifacts(before, after);
   assert.deepEqual(diff.operations.added.map((o) => o.id), ['b']);
   assert.deepEqual(diff.unverified_operations, []);
+});
+
+test('verificationItems 列出引用指定状态控件的操作及其说明', () => {
+  const hints = [{ ref: 'hiddenBtn', state: 'unknown', note: '源码未找到渲染条件' }, { ref: 'delBtn', state: 'data_dependent', note: '选中行有 tag' }];
+  const a = art([op('x', 'hiddenBtn'), op('y', 'delBtn'), op('z')], hints);
+  assert.deepEqual(verificationItems(a, 'unknown'), [{ id: 'x', name: 'x', refs: ['hiddenBtn'], notes: ['源码未找到渲染条件'] }]);
+  assert.deepEqual(verificationItems(a, 'data_dependent').map((i) => i.id), ['y']);
 });
