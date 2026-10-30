@@ -23,6 +23,8 @@ export type ArtifactDiff = {
   operations: IdDiff<Operation>;
   /** 按接口相似度判定为改名、已在对比前还原 id 的操作 */
   operation_renames: OperationRename[];
+  /** 步骤引用了 state=unknown 控件的操作，未参与对比 */
+  unverified_operations: string[];
   meta_ops: IdDiff<MetaOp>;
   flows: IdDiff<Flow> & { sequenceChanged: { id: string; before: string[]; after: string[] }[] };
   /** 完整流程链比对（主轴） */
@@ -102,12 +104,31 @@ function diffById<T extends { id: string }>(
   return { added, removed, changed, unchanged };
 }
 
+function unverifiedRefs(a: FeatureArtifact): Set<string> {
+  return new Set((a.elements_hints ?? []).filter((h) => h.state === 'unknown').map((h) => h.ref));
+}
+
+const touchesUnverified = (op: Operation, refs: Set<string>): boolean =>
+  refs.size > 0 && (op.steps ?? []).some((s) => !!s.element && refs.has(s.element));
+
+function splitUnverified(a: FeatureArtifact): { artifact: FeatureArtifact; unverified: string[] } {
+  const refs = unverifiedRefs(a);
+  const unverified = a.operations.filter((o) => touchesUnverified(o, refs)).map((o) => o.id);
+  if (!unverified.length) return { artifact: a, unverified };
+  return { artifact: { ...a, operations: a.operations.filter((o) => !touchesUnverified(o, refs)) }, unverified };
+}
+
 export function diffFeatureArtifacts(
-  before: FeatureArtifact,
-  rawAfter: FeatureArtifact,
+  beforeIn: FeatureArtifact,
+  rawAfterIn: FeatureArtifact,
   opts?: { strict?: boolean },
 ): ArtifactDiff {
   const strict = opts?.strict ?? false;
+  const b = splitUnverified(beforeIn);
+  const a = splitUnverified(rawAfterIn);
+  const before = b.artifact;
+  const rawAfter = a.artifact;
+  const unverified_operations = [...b.unverified, ...a.unverified];
   const { after, renamed: operation_renames } = alignOperations(before, rawAfter);
   const operations = diffById(before.operations, after.operations, (op) => {
     const pick: Record<string, unknown> = {};
@@ -145,6 +166,7 @@ export function diffFeatureArtifacts(
     strict,
     operations,
     operation_renames,
+    unverified_operations,
     meta_ops,
     flows,
     flow_chains,
