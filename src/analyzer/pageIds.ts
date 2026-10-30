@@ -1,4 +1,4 @@
-const RESERVED_PAGE_IDS = new Set(['list', 'detail', 'site_assignment', 'site_properties']);
+const RESERVED_PAGE_IDS = new Set(['site_assignment', 'site_properties']);
 
 export function pageIdFromSource(sourceHint: string): string | undefined {
   const first = sourceHint.split(/[\s（(+,，]/)[0]?.trim();

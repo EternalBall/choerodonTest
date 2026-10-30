@@ -40,11 +40,22 @@ test('派生 id 与已有 id 冲突时保持原 id，不影响其他页面', () 
   assert.deepEqual(out.pages.map((p) => p.id), ['a', 'bar']);
 });
 
-test('保留页面 id 不被派生覆盖', () => {
+test('站点分配/站点属性等固定 id 不被派生覆盖', () => {
   const artifact = {
-    pages: [{ id: 'detail', source_hint: 'Material/MaterialDetail/index.js' }],
+    pages: [{ id: 'site_assignment', source_hint: 'Material/MaterialSiteAssignment' }],
     operations: [],
   };
   const out = stabilizePageIds(artifact) as typeof artifact;
-  assert.deepEqual(out.pages.map((p) => p.id), ['detail']);
+  assert.deepEqual(out.pages.map((p) => p.id), ['site_assignment']);
+});
+
+test('LLM 把唯一页面命名为 list 时，仍按源码路径派生', () => {
+  const artifact = {
+    pages: [{ id: 'list', source_hint: 'MachineProductionDispatch/index.js + DragGrid' }],
+    operations: [{ id: 'q', page_id: 'list', steps: [{ kind: 'goto', page_id: 'list' }] }],
+  };
+  const out = stabilizePageIds(artifact) as typeof artifact;
+  assert.deepEqual(out.pages.map((p) => p.id), ['machine_production_dispatch']);
+  assert.equal(out.operations[0].page_id, 'machine_production_dispatch');
+  assert.equal(out.operations[0].steps[0].page_id, 'machine_production_dispatch');
 });
