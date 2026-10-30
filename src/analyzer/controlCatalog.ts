@@ -9,15 +9,17 @@ export type CatalogControl = {
   line: number;
   tag: string;
   label: string;
-  state: string; // always | data_dependent | unknown | after:<触发控件 id>
+  state: string; // always | data_dependent | unknown | after:<触发控件 id（首个）>
   note: string;
+  /** after 状态下全部直接触发控件的 id（OR 关系，任一即可打开弹窗）；首个与 state 中的一致 */
+  triggers?: string[];
   ambiguous?: boolean;
 };
 
 type Draft = Omit<CatalogControl, 'id' | 'ambiguous'> & {
   handler: string;
   ctx: string;
-  openerLine?: number;
+  openerLines?: number[];
 };
 
 const CONTROL_TAG = /^(Button|Input|Select|Checkbox|Radio|Switch|Table|Modal|Drawer|Tabs|Tab|DatePicker|RangePicker|Upload|Pagination|TextArea|InputNumber|Dropdown|Menu|Tooltip|Form|Popconfirm)$/;
@@ -143,21 +145,28 @@ function scanOpeners(content: string, absPath: string) {
   return { opens, clicks, calls };
 }
 
-/** 从弹窗的打开点向上追溯：返回 'enter'（页面进入时自动弹出）、触发它的 onClick 行号，或 undefined */
-function findOpenerLine(
+/**
+ * 从弹窗的打开点向上追溯：返回 'enter'（页面进入时自动弹出）、全部直接触发它的点击行号，或 undefined。
+ * 逐层向上（BFS，深度 ≤ MAX_DEPTH）：某一层找到点击即停止，同层的多个点击都记录。
+ */
+function findOpenerLines(
   open: OpenSite,
   scan: ReturnType<typeof scanOpeners>,
-): number | 'enter' | undefined {
+): number[] | 'enter' | undefined {
   const inside = scan.clicks.find((c) => open.start >= c.start && open.end <= c.end);
-  if (inside) return inside.line;
-  let name = open.fn;
-  for (let depth = 0; name && depth < MAX_DEPTH; depth++) {
-    // useEffect 里调用（如页面挂载时 login()）优先于点击：进入功能即弹出
-    if (scan.calls.some((c) => c.callee === name && c.inEffect)) return 'enter';
-    const direct = scan.clicks.find((c) => c.refs.has(name!));
-    if (direct) return direct.line;
-    const caller = scan.calls.find((c) => c.callee === name && c.fn && c.fn !== name);
-    name = caller?.fn;
+  if (inside) return [inside.line];
+  let frontier = open.fn ? [open.fn] : [];
+  for (let depth = 0; frontier.length && depth < MAX_DEPTH; depth++) {
+    const lines: number[] = [];
+    const next: string[] = [];
+    for (const name of frontier) {
+      // useEffect 里调用（如页面挂载时 login()）优先于点击：进入功能即弹出
+      if (scan.calls.some((c) => c.callee === name && c.inEffect)) return 'enter';
+      for (const c of scan.clicks) if (c.refs.has(name) && !lines.includes(c.line)) lines.push(c.line);
+      for (const c of scan.calls) if (c.callee === name && c.fn && c.fn !== name && !next.includes(c.fn)) next.push(c.fn);
+    }
+    if (lines.length) return lines.sort((a, b) => a - b);
+    frontier = next;
   }
   return undefined;
 }
@@ -216,21 +225,21 @@ export function draftsFromPruned(
       }
       let state = 'always';
       let note = '';
-      let openerLine: number | undefined;
+      let openerLines: number[] | undefined;
       if (container) {
         state = 'unknown';
         note = '弹窗/抽屉容器，显示条件待确认';
       } else if (overlay) {
         const open = scan?.opens.find((o) => n.line >= o.start && n.line <= o.end);
         if (!ctx && open?.title) ctx = `Modal.open:${open.title}`;
-        const r = open && scan ? findOpenerLine(open, scan) : undefined;
+        const r = open && scan ? findOpenerLines(open, scan) : undefined;
         if (r === 'enter') {
           state = 'always';
           note = '进入功能时自动弹出（useEffect 挂载时调用）';
-        } else if (typeof r === 'number') {
-          openerLine = r;
-          state = 'after:(opener)'; // 占位，buildControlCatalog 中替换为触发控件的 id
-          note = `点击 ${pf.file}:${r} 后弹出`;
+        } else if (Array.isArray(r)) {
+          openerLines = r;
+          state = 'after:(opener)'; // 占位，buildControlCatalog 中替换为首个触发控件的 id
+          note = `点击 ${r.map((l) => `${pf.file}:${l}`).join('、')} 之一后弹出`;
         } else {
           state = 'unknown';
           note = '位于弹窗/抽屉内，未能追溯打开它的控件';
@@ -248,7 +257,7 @@ export function draftsFromPruned(
         note,
         handler,
         ctx,
-        openerLine,
+        openerLines,
       });
     }
     for (const ch of n.children) walk(ch, overlay, c, b, ctx);
@@ -289,10 +298,10 @@ export function buildControlCatalog(files: { relativePath: string; absolutePath:
   // 2) after 引用：把打开行号换成触发控件的语义 id；找不到则退回 unknown
   for (let i = 0; i < controls.length; i++) {
     const d = drafts[i];
-    if (d.openerLine === undefined) continue;
-    const target = idOf.get(`${d.file}:${d.openerLine}`);
-    controls[i] = target
-      ? { ...controls[i], state: `after:${target}` }
+    if (!d.openerLines?.length) continue;
+    const targets = d.openerLines.map((l) => idOf.get(`${d.file}:${l}`)).filter((x): x is string => !!x);
+    controls[i] = targets.length
+      ? { ...controls[i], state: `after:${targets[0]}`, triggers: targets }
       : { ...controls[i], state: 'unknown', note: '位于弹窗/抽屉内，触发控件不在目录中' };
   }
   return controls;

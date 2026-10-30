@@ -181,3 +181,24 @@ test('Table 按绑定的数据集及其请求地址区分，不再同名冲突',
   assert.equal(tables[0].id.split('|')[4], 'dataSet:dsA@/v1/x/a/query');
   assert.equal(tables[1].id.split('|')[4], 'dataSet:dsB@/v1/x/b/info');
 });
+
+test('同一函数被多个点击调用时，after 记录全部触发控件（triggers），state 取首个', () => {
+  const two = [
+    "import { Button, Modal } from 'hzero-ui';",
+    'export default function P() {',
+    '  const detail = (id) => { Modal.open({ title: intl.get(`a.b`).d("详情"), children: <Button>确定</Button> }); };',
+    '  return (<div>',
+    '    <a onClick={() => { detail(1); }}>甲</a>',
+    '    <a onClick={() => { detail(2); }}>乙</a>',
+    '  </div>);',
+    '}',
+  ].join('\n');
+  const cat = buildControlCatalog([{ relativePath: 'm.js', absolutePath: '/x/m.js', content: two }]);
+  const ok = cat.find((c) => c.label === '确定');
+  const aJia = cat.find((c) => c.label === '甲');
+  const aYi = cat.find((c) => c.label === '乙');
+  assert.ok(ok && aJia && aYi);
+  assert.deepEqual(ok.triggers, [aJia.id, aYi.id]);
+  assert.equal(ok.state, `after:${aJia.id}`);
+  assert.equal(aJia.triggers, undefined);
+});
