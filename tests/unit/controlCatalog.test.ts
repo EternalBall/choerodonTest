@@ -101,3 +101,49 @@ test('同指纹控件加 #序号并标记 ambiguous', () => {
   assert.notEqual(cancels[0].id, cancels[1].id);
   assert.ok(cancels[1].id.endsWith('#2'));
 });
+
+test('无文案的控件 label 不带行号，只用组件名', () => {
+  const noText = "import { Button } from 'hzero-ui';\nexport default function P() {\n  return <div>\n    <Button />\n  </div>;\n}\n";
+  const cat = buildControlCatalog([{ relativePath: 'n.js', absolutePath: '/x/n.js', content: noText }]);
+  assert.equal(cat[0]?.label, 'Button');
+  assert.ok(!cat[0].id.includes('@'));
+});
+
+test('onClick 内联箭头：带字面量参数的调用取 fn(\'lit\')，区分同函数不同参数的按钮', () => {
+  const two = [
+    "import { Button } from 'hzero-ui';",
+    'export default function P({ flag }) {',
+    '  const del = async (f) => f;',
+    '  return (<div>',
+    "    {flag ? <Button onClick={() => del('sended')}>删除标记</Button>",
+    "      : <Button onClick={() => del('send')}>删除标记</Button>}",
+    '  </div>);',
+    '}',
+  ].join('\n');
+  const cat = buildControlCatalog([{ relativePath: 't.js', absolutePath: '/x/t.js', content: two }]);
+  const ids = cat.map((c) => c.id.split('|')[4]);
+  assert.deepEqual(ids, ["del('sended')", "del('send')"]);
+  assert.ok(cat.every((c) => !c.ambiguous));
+});
+
+test('onClick 内联复杂逻辑不取内部标识符，指纹为空', () => {
+  const inline = "import { Button } from 'hzero-ui';\nexport default function P() {\n  return <Button onClick={() => { setA(1); setB(2); }}>确定</Button>;\n}\n";
+  const cat = buildControlCatalog([{ relativePath: 'i.js', absolutePath: '/x/i.js', content: inline }]);
+  assert.equal(cat[0].id, 'i.js|Button|确定||');
+});
+
+test('所在容器取最近一层带文案的 Tab，指纹随页签变化而区分', () => {
+  const tabs = [
+    "import { Button, Tabs, Tab } from 'hzero-ui';",
+    'export default function P() {',
+    '  return (<Tabs>',
+    "    <Tab tab={intl.get('a.x').d('已派工单')}><Button>查询</Button></Tab>",
+    "    <Tab tab={intl.get('a.y').d('待派工单')}><Button>查询</Button></Tab>",
+    '  </Tabs>);',
+    '}',
+  ].join('\n');
+  const cat = buildControlCatalog([{ relativePath: 'tb.js', absolutePath: '/x/tb.js', content: tabs }]);
+  const btns = cat.filter((c) => c.tag === 'Button');
+  assert.deepEqual(btns.map((c) => c.id.split('|')[3]), ['Tab:已派工单', 'Tab:待派工单']);
+  assert.ok(btns.every((c) => !c.ambiguous));
+});

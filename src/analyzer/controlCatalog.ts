@@ -3,7 +3,7 @@ import { pruneJsxSource, type PrunedFile, type PrunedNode } from './pruneJsx.js'
 
 /** 源码中枚举出的一个控件：id 为 文件:行号，状态由静态结构确定，不交给 LLM 判断 */
 export type CatalogControl = {
-  /** 语义指纹：文件|标签|文案|所在弹窗|触发函数；同指纹冲突时追加 #序号 并 ambiguous=true */
+  /** 语义指纹：文件|标签|文案|所在容器|触发函数；同指纹冲突时追加 #序号 并 ambiguous=true（不含行号） */
   id: string;
   file: string;
   line: number;
@@ -35,12 +35,27 @@ export function isControlNode(n: PrunedNode): boolean {
 
 const decodeEntities = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
+/** 无文案时退回组件名（不带行号），同名冲突由 buildControlCatalog 的 #序号 兜底 */
 function labelOf(n: PrunedNode): string {
   const p = n.props;
   const pick = (k: string) => (typeof p[k] === 'string' || typeof p[k] === 'number' ? String(p[k]) : undefined);
-  return decodeEntities(
-    n.text?.trim() || pick('name') || pick('placeholder') || pick('id') || pick('title') || `${n.tag}@${n.line}`,
-  ).slice(0, 60);
+  return decodeEntities(n.text?.trim() || pick('name') || pick('placeholder') || pick('id') || pick('title') || lastSeg(n.tag)).slice(0, 60);
+}
+
+/** 属性值中的文案：裁剪器已把 `.d('文案')` 解析为字面量；残留的 `{表达式}` 再从中取 .d 文案或引号内容 */
+function propText(v: string | number | boolean | undefined): string | undefined {
+  if (typeof v !== 'string' || !v) return undefined;
+  if (!v.startsWith('{')) return v;
+  const m = v.match(/\.d\(\s*['"`]([^'"`]+)['"`]/) ?? v.match(/^\{\s*['"`]([^'"`]+)['"`]\s*\}$/);
+  return m?.[1];
+}
+
+/** 可作为控件所在容器标识的组件：取其文案属性（title / tab / key）作为容器名 */
+const CTX_TAG = /^(Modal|Drawer|Card|Form|Tabs|Tab)$/;
+function ctxOf(n: PrunedNode): string | undefined {
+  if (!CTX_TAG.test(lastSeg(n.tag))) return undefined;
+  const t = propText(n.props.title) ?? propText(n.props.tab) ?? propText(n.props.key);
+  return t ? `${lastSeg(n.tag)}:${t}` : undefined;
 }
 
 /** branch 形如 `cx<条件文本>:T` 或 `<位置>:T/F`；取条件文本作为备注 */
@@ -51,7 +66,7 @@ function condNote(branch: string[] | undefined): string {
 
 type Range = { start: number; end: number };
 type OpenSite = Range & { fn?: string; title?: string };
-type ClickSite = Range & { line: number; refs: Set<string> };
+type ClickSite = Range & { line: number; refs: Set<string>; handler: string };
 type CallSite = { callee: string; fn?: string; inEffect: boolean };
 
 /** 扫描源码：Modal.open 调用、onClick 属性及其引用的标识符、函数间调用关系 */
@@ -74,6 +89,20 @@ function scanOpeners(content: string, absPath: string) {
       if (ts.isCallExpression(up) && up.expression.getText(sf) === 'useEffect') return true;
     }
     return false;
+  };
+  /**
+   * 稳定的处理函数指纹：`onClick={fn}` 取 fn；`onClick={() => fn('lit')}` 取 `fn('lit')`（区分同函数不同参数的按钮）；
+   * 其余内联逻辑返回空串，不取内部标识符（否则改动内部代码即变 id）
+   */
+  const handlerOf = (e: ts.Expression | undefined): string => {
+    if (!e) return '';
+    if (ts.isIdentifier(e)) return e.text;
+    const body = ts.isArrowFunction(e) || ts.isFunctionExpression(e) ? e.body : undefined;
+    if (body && !ts.isBlock(body) && ts.isCallExpression(body) && ts.isIdentifier(body.expression)) {
+      const a0 = body.arguments[0];
+      return a0 && ts.isStringLiteral(a0) ? `${body.expression.text}('${a0.text}')` : body.expression.text;
+    }
+    return '';
   };
   const opens: OpenSite[] = [];
   const clicks: ClickSite[] = [];
@@ -106,7 +135,7 @@ function scanOpeners(content: string, absPath: string) {
       };
       if (n.initializer.expression) collect(n.initializer.expression);
       const el = n.parent.parent;
-      clicks.push({ start: lineOf(el), end: endLineOf(el), line: lineOf(el), refs });
+      clicks.push({ start: lineOf(el), end: endLineOf(el), line: lineOf(el), refs, handler: handlerOf(n.initializer.expression) });
     }
     ts.forEachChild(n, visit);
   };
@@ -139,7 +168,7 @@ export function draftsFromPruned(pf: PrunedFile, content?: string): Draft[] {
   const scan = content !== undefined ? scanOpeners(content, pf.file) : undefined;
   const handlerAt = (line: number): string => {
     const c = scan?.clicks.find((x) => x.line === line);
-    return c ? ([...c.refs][0] ?? '') : '';
+    return c ? c.handler : '';
   };
   const walk = (n: PrunedNode, overlayIn: boolean, cond: boolean, branch: string[] | undefined, ctxIn: string) => {
     const c = n.conditional || cond;
@@ -147,7 +176,8 @@ export function draftsFromPruned(pf: PrunedFile, content?: string): Draft[] {
     // JSX 形式的 Modal / Drawer：自身与其子树都属于弹窗内容（显隐由外部状态控制）
     const container = /^(Modal|Drawer)$/.test(lastSeg(n.tag));
     const overlay = overlayIn || container;
-    let ctx = container ? `${lastSeg(n.tag)}:${typeof n.props.title === 'string' ? n.props.title : ''}` : ctxIn;
+    // 所在容器取最近一层带文案的容器（弹窗/抽屉/页签/表单等），没有则沿用外层
+    let ctx = ctxOf(n) ?? ctxIn;
     if (isControlNode(n)) {
       let state = 'always';
       let note = '';
