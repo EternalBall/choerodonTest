@@ -48,3 +48,12 @@ test('verificationItems 同时列出引用指定状态控件的元操作', () =>
   const a = { ...art([], hints), meta_ops: [{ id: 'dispatch.delTag', name: '删除标记', kind: 'action', element: 'delTagBtn', ready: 'always' }] } as unknown as FeatureArtifact;
   assert.deepEqual(verificationItems(a, 'data_dependent'), [{ id: 'dispatch.delTag', name: '删除标记', refs: ['delTagBtn'], notes: ['选中行有 tag'] }]);
 });
+
+test('hints 带页面前缀、步骤为裸名时仍按名字匹配 unknown 控件', () => {
+  const hints = [{ ref: 'machine_dispatch.hiddenBtn', state: 'unknown', note: '源码未找到' }];
+  const before = art([op('keep'), op('hidden', 'hiddenBtn')], hints);
+  const after = art([op('keep'), op('newHidden', 'hiddenBtn'), op('added')], hints);
+  const diff = diffFeatureArtifacts(before, after);
+  assert.deepEqual(diff.unverified_operations.sort(), ['hidden', 'newHidden']);
+  assert.deepEqual(verificationItems(after, 'unknown').map((i) => i.id), ['newHidden']);
+});

@@ -14,6 +14,7 @@ import {
 import { deepSeekChat } from './deepseekClient.js';
 import { formatSnippetsForPrompt, type CodeSnippet } from './retrieve.js';
 import { stabilizePageIds } from './pageIds.js';
+import { canonicalizeElementRefs, ungroundedRefs } from './elementRefs.js';
 
 const ALLOWED_TYPES = new Set([
   'query',
@@ -377,27 +378,39 @@ export async function llmAnalyzeFeature(opts: {
     'DeepSeek 分析开始',
   );
 
-  const { content: text, model } = await deepSeekChat({
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      {
-        role: 'user',
-        content: `功能关键词: ${opts.feature}\n\n${playbookBlock}\n\n请结合上述 Playbooks 与下列源码，严格按示例 JSON 结构输出路径描述：\n\n${codeBlock}${opts.baselineBlock ? `\n\n${opts.baselineBlock}` : ''}`,
-      },
-    ],
-    responseFormatJson: true,
-    temperature: 0.1,
-  });
-
-  await saveRawLlmResponse(opts.feature, text);
-
+  const userContent = `功能关键词: ${opts.feature}\n\n${playbookBlock}\n\n请结合上述 Playbooks 与下列源码，严格按示例 JSON 结构输出路径描述：\n\n${codeBlock}${opts.baselineBlock ? `\n\n${opts.baselineBlock}` : ''}`;
+  // 输出不是合法 JSON 时补一条纠正指令重问一次（改变请求内容，避免命中缓存的同一坏应答）
+  let text = '';
+  let model = '';
   let json: unknown;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) throw new Error('无法解析 DeepSeek JSON');
-    json = JSON.parse(m[0]);
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const extra = attempt === 1 ? [] : [{ role: 'user' as const, content: '上一次回复无法解析为 JSON。请只输出一个合法 JSON 对象，不要任何解释或代码围栏。' }];
+    const r = await deepSeekChat({
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userContent },
+        ...extra,
+      ],
+      responseFormatJson: true,
+      temperature: 0.1,
+    });
+    text = r.content;
+    model = r.model;
+    await saveRawLlmResponse(opts.feature, text);
+    try {
+      json = JSON.parse(text);
+      break;
+    } catch {
+      const m = text.match(/\{[\s\S]*\}/);
+      try {
+        if (!m) throw new Error('no json object');
+        json = JSON.parse(m[0]);
+        break;
+      } catch (err) {
+        if (attempt === 2) throw new Error(`无法解析 DeepSeek JSON（已重试 1 次）：${(err as Error).message}`);
+        logger.warn({ feature: opts.feature }, 'DeepSeek 应答不是合法 JSON，重问一次');
+      }
+    }
   }
 
   const normalized = normalizeLlmJson(json, opts.feature);
@@ -416,6 +429,12 @@ export async function llmAnalyzeFeature(opts: {
     },
     'DeepSeek 分析完成',
   );
+
+  const sourceText = opts.snippets.map((s) => s.content).join('\n');
+  const ungrounded = ungroundedRefs(artifact.elements_hints ?? [], sourceText);
+  if (ungrounded.length) {
+    logger.warn({ refs: ungrounded }, '以下 elements_hints 的名字在检索到的源码中找不到，请核对是否为臆造别名');
+  }
 
   const stepStats = artifact.operations.map((o) => {
     const steps = o.steps ?? [];
@@ -499,7 +518,7 @@ export function normalizeLlmJson(input: unknown, featureHint: string): Record<st
   enrichInFeatureSiteAssignment(filtered, pages, page_edges, field_rules, apis);
   bindApisAgainstCatalog(filtered, apis);
 
-  return stabilizePageIds({
+  return canonicalizeElementRefs(stabilizePageIds({
     feature: String(raw.feature || featureHint),
     entry,
     pages: pages.length ? pages : undefined,
@@ -516,7 +535,7 @@ export function normalizeLlmJson(input: unknown, featureHint: string): Record<st
       clampConfidence(raw.confidence),
     ),
     confidence: clampConfidence(raw.confidence),
-  });
+  }));
 }
 
 function normalizeOperation(item: unknown, index: number): Record<string, unknown> | null {

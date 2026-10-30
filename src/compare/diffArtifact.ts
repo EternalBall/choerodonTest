@@ -7,6 +7,7 @@ import { attachFieldFactsToFlows } from './linkFieldFacts.js';
 import { diffFlowChains, type FlowChainDiff } from './resolveFlow.js';
 import { diffPageModel, pageModelChanged, type PageModelDiff } from './diffPageModel.js';
 import { alignOperations, type OperationRename } from './alignOperations.js';
+import { refName } from '../analyzer/elementRefs.js';
 
 type Operation = z.infer<typeof OperationSchema>;
 
@@ -104,21 +105,22 @@ function diffById<T extends { id: string }>(
   return { added, removed, changed, unchanged };
 }
 
+/** 步骤 element 为裸名，hints ref 为 `<页面>.<名字>`，统一按名字对齐 */
 function unverifiedRefs(a: FeatureArtifact): Set<string> {
-  return new Set((a.elements_hints ?? []).filter((h) => h.state === 'unknown').map((h) => h.ref));
+  return new Set((a.elements_hints ?? []).filter((h) => h.state === 'unknown').map((h) => refName(h.ref)));
 }
 
 const touchesUnverified = (op: Operation, refs: Set<string>): boolean =>
-  refs.size > 0 && (op.steps ?? []).some((s) => !!s.element && refs.has(s.element));
+  refs.size > 0 && (op.steps ?? []).some((s) => !!s.element && refs.has(refName(s.element)));
 
 export type VerificationItem = { id: string; name: string; refs: string[]; notes: string[] };
 
 /** 按元素提示的 state 列出引用了该状态控件的操作与元操作（state 取 unknown 或 data_dependent） */
 export function verificationItems(a: FeatureArtifact, state: string): VerificationItem[] {
-  const notes = new Map((a.elements_hints ?? []).filter((h) => h.state === state).map((h) => [h.ref, h.note ?? '']));
+  const notes = new Map((a.elements_hints ?? []).filter((h) => h.state === state).map((h) => [refName(h.ref), h.note ?? '']));
   if (!notes.size) return [];
   const toItem = (id: string, name: string, elems: (string | undefined)[]): VerificationItem[] => {
-    const refs = [...new Set(elems.filter((e): e is string => !!e && notes.has(e)))];
+    const refs = [...new Set(elems.filter((e): e is string => !!e && notes.has(refName(e))).map((e) => refName(e)))];
     return refs.length ? [{ id, name, refs, notes: refs.map((r) => notes.get(r) ?? '') }] : [];
   };
   const ops = a.operations.flatMap((o) => toItem(o.id, o.name, (o.steps ?? []).map((s) => s.element)));

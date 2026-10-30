@@ -141,19 +141,34 @@ export async function locatePages(opts: LocateOptions): Promise<LocateOutcome> {
   );
 
   logger.info({ feature: opts.feature, files: pruned.files.length }, '页面 DOM 结构解析：请求 LLM');
-  const { content } = await deepSeekChat({
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: user },
-    ],
-    temperature: 0.1,
-  });
+  // YAML 解析失败时补一条纠正指令重问一次（改变请求内容，避免命中缓存的同一坏应答）
+  let content = '';
+  let parsed: unknown;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const extra = attempt === 1 ? [] : [{ role: 'user' as const, content: '上一次回复的 YAML 无法解析（常见原因：嵌套映射写成了紧凑形式、列表项未加引号）。请严格按规范重新输出合法 YAML。' }];
+    const r = await deepSeekChat({
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+        ...extra,
+      ],
+      temperature: 0.1,
+    });
+    content = r.content;
+    try {
+      parsed = parseLocateResponse(content);
+      break;
+    } catch (err) {
+      if (attempt === 2) throw err;
+      logger.warn({ feature: opts.feature, error: (err as Error).message }, 'DOM 定位应答 YAML 解析失败，重问一次');
+    }
+  }
 
   const dir = featureArtifactDir(opts.feature);
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(path.join(dir, 'page-locators.raw.txt'), content, 'utf8');
 
-  const merged = coerce(parseLocateResponse(content), pre);
+  const merged = coerce(parsed, pre);
   const { result, violations } = applyQualityGates(merged, { kitKeys: new Set(kitKeys) });
   await fs.writeFile(locateOutputFile(opts.feature), YAML.stringify({ ...result, quality_violations: violations }), 'utf8');
   logger.info(
