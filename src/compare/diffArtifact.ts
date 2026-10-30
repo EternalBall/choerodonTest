@@ -113,14 +113,17 @@ const touchesUnverified = (op: Operation, refs: Set<string>): boolean =>
 
 export type VerificationItem = { id: string; name: string; refs: string[]; notes: string[] };
 
-/** 按元素提示的 state 列出引用了该状态控件的操作（state 取 unknown 或 data_dependent） */
+/** 按元素提示的 state 列出引用了该状态控件的操作与元操作（state 取 unknown 或 data_dependent） */
 export function verificationItems(a: FeatureArtifact, state: string): VerificationItem[] {
   const notes = new Map((a.elements_hints ?? []).filter((h) => h.state === state).map((h) => [h.ref, h.note ?? '']));
   if (!notes.size) return [];
-  return a.operations.flatMap((o) => {
-    const refs = [...new Set((o.steps ?? []).map((s) => s.element).filter((e): e is string => !!e && notes.has(e)))];
-    return refs.length ? [{ id: o.id, name: o.name, refs, notes: refs.map((r) => notes.get(r) ?? '') }] : [];
-  });
+  const toItem = (id: string, name: string, elems: (string | undefined)[]): VerificationItem[] => {
+    const refs = [...new Set(elems.filter((e): e is string => !!e && notes.has(e)))];
+    return refs.length ? [{ id, name, refs, notes: refs.map((r) => notes.get(r) ?? '') }] : [];
+  };
+  const ops = a.operations.flatMap((o) => toItem(o.id, o.name, (o.steps ?? []).map((s) => s.element)));
+  const metas = (a.meta_ops ?? []).flatMap((m) => toItem(m.id, m.name, [m.element]));
+  return [...ops, ...metas];
 }
 
 function splitUnverified(a: FeatureArtifact): { artifact: FeatureArtifact; unverified: string[] } {

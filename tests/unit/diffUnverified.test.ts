@@ -42,3 +42,9 @@ test('verificationItems 列出引用指定状态控件的操作及其说明', ()
   assert.deepEqual(verificationItems(a, 'unknown'), [{ id: 'x', name: 'x', refs: ['hiddenBtn'], notes: ['源码未找到渲染条件'] }]);
   assert.deepEqual(verificationItems(a, 'data_dependent').map((i) => i.id), ['y']);
 });
+
+test('verificationItems 同时列出引用指定状态控件的元操作', () => {
+  const hints = [{ ref: 'delTagBtn', state: 'data_dependent', note: '选中行有 tag' }];
+  const a = { ...art([], hints), meta_ops: [{ id: 'dispatch.delTag', name: '删除标记', kind: 'action', element: 'delTagBtn', ready: 'always' }] } as unknown as FeatureArtifact;
+  assert.deepEqual(verificationItems(a, 'data_dependent'), [{ id: 'dispatch.delTag', name: '删除标记', refs: ['delTagBtn'], notes: ['选中行有 tag'] }]);
+});
