@@ -13,6 +13,7 @@ import {
 } from '../knowledge/loadPlaybooks.js';
 import { deepSeekChat } from './deepseekClient.js';
 import { formatSnippetsForPrompt, type CodeSnippet } from './retrieve.js';
+import { stabilizePageIds } from './pageIds.js';
 
 const ALLOWED_TYPES = new Set([
   'query',
@@ -497,7 +498,7 @@ export function normalizeLlmJson(input: unknown, featureHint: string): Record<st
   enrichInFeatureSiteAssignment(filtered, pages, page_edges, field_rules, apis);
   bindApisAgainstCatalog(filtered, apis);
 
-  return {
+  return stabilizePageIds({
     feature: String(raw.feature || featureHint),
     entry,
     pages: pages.length ? pages : undefined,
@@ -514,7 +515,7 @@ export function normalizeLlmJson(input: unknown, featureHint: string): Record<st
       clampConfidence(raw.confidence),
     ),
     confidence: clampConfidence(raw.confidence),
-  };
+  });
 }
 
 function normalizeOperation(item: unknown, index: number): Record<string, unknown> | null {
