@@ -226,3 +226,40 @@ export function buildControlCatalog(files: { relativePath: string; absolutePath:
   }
   return controls;
 }
+
+/** 提示词中的控件目录：LLM 只能从这里取 element 的值 */
+export function catalogPromptBlock(controls: CatalogControl[]): string {
+  const rows = controls.map((c) => `- ${c.id} | ${c.tag} | ${c.label} | ${c.state}${c.note ? ` | ${c.note}` : ''}`);
+  return [
+    '【控件目录（源码静态枚举，唯一可用的控件）】',
+    '步骤的 element 必须且只能取下表第一列的 id（原样复制），禁止自造名字；elements_hints 无需输出，由目录生成。',
+    ...rows,
+  ].join('\n');
+}
+
+/**
+ * 用控件目录替换 elements_hints，并检查步骤/元操作引用的 element 是否都在目录中。
+ * 不在目录中的引用原样保留并返回，供调用方记录为未验证。
+ */
+export function applyControlCatalog(
+  raw: Record<string, unknown>,
+  controls: CatalogControl[],
+): { artifact: Record<string, unknown>; unverified: string[] } {
+  const ids = new Set(controls.map((c) => c.id));
+  const unverified = new Set<string>();
+  const check = (el: unknown) => {
+    if (typeof el === 'string' && el && !ids.has(el)) unverified.add(el);
+  };
+  const ops = Array.isArray(raw.operations) ? (raw.operations as Array<{ steps?: Array<{ element?: unknown }> }>) : [];
+  for (const o of ops) for (const st of o.steps ?? []) check(st.element);
+  const metas = Array.isArray(raw.meta_ops) ? (raw.meta_ops as Array<{ element?: unknown }>) : [];
+  for (const m of metas) check(m.element);
+  const elements_hints = controls.map((c) => ({
+    ref: c.id,
+    name: c.label,
+    role: c.tag,
+    state: c.state,
+    note: c.note || undefined,
+  }));
+  return { artifact: { ...raw, elements_hints }, unverified: [...unverified] };
+}

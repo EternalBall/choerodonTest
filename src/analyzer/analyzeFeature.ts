@@ -11,6 +11,7 @@ import { extractFieldFacts, extractRenderedEditableFields } from './staticExtrac
 import { normalizeStepElementRefs } from './validateSteps.js';
 import { anchorToBaseline, formatBaselineForPrompt, loadBaselineArtifact, pruneUnrenderedFields, repairFromBaseline } from './baselineAnchor.js';
 import { llmAnalyzeFeature } from './llmAnalyze.js';
+import { applyControlCatalog, buildControlCatalog } from './controlCatalog.js';
 import { locatePages, pickPageEntries } from './llmLocate.js';
 
 export type AnalyzeOptions = {
@@ -59,15 +60,27 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
     const facts = extractFieldFacts(snippets);
     return { ...base, field_facts: facts, page_model: extractPageModel(snippets, facts) };
   }
+  // 源码控件目录：静态枚举的全部控件，LLM 只能从中选取 element（语义 id，见 controlCatalog.ts）
+  const controlCatalog = buildControlCatalog(snippets);
   let raw = await llmAnalyzeFeature({
     feature: opts.feature,
     snippets,
     playbooks,
     maxTotalChars: opts.featureDir ? FEATURE_DIR_MAX_TOTAL_CHARS : undefined,
     baselineBlock: base ? formatBaselineForPrompt(base) : undefined,
+    controlCatalog,
   });
-  if (base) raw = repairFromBaseline(anchorToBaseline(raw, base).artifact, base).artifact;
+  if (controlCatalog.length) {
+    const applied = applyControlCatalog(raw as unknown as Record<string, unknown>, controlCatalog);
+    raw = applied.artifact as unknown as typeof raw;
+    if (applied.unverified.length) {
+      logger.warn({ refs: applied.unverified }, '步骤引用的 element 不在控件目录中，已记为未验证');
+    }
+  } else if (base) {
+    raw = repairFromBaseline(anchorToBaseline(raw, base).artifact, base).artifact;
+  }
   const knownElements = [
+    ...controlCatalog.map((c) => c.id),
     ...Object.keys(await loadPlatformKit()),
     ...Object.keys(await loadFeatureElementsOverlay(opts.feature)),
     ...Object.keys(located?.result.elements_draft[located.result.slug] ?? {}),

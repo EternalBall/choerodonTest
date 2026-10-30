@@ -15,6 +15,7 @@ import { deepSeekChat } from './deepseekClient.js';
 import { formatSnippetsForPrompt, type CodeSnippet } from './retrieve.js';
 import { stabilizePageIds } from './pageIds.js';
 import { canonicalizeElementRefs, ungroundedRefs } from './elementRefs.js';
+import { catalogPromptBlock, type CatalogControl } from './controlCatalog.js';
 
 const ALLOWED_TYPES = new Set([
   'query',
@@ -357,6 +358,8 @@ export async function llmAnalyzeFeature(opts: {
   playbooks?: PlaybookDoc[];
   /** 基线骨架（提示词块）：要求未变化处沿用基线 id 与结构 */
   baselineBlock?: string;
+  /** 源码控件目录：提供时 element 只能取目录 id */
+  controlCatalog?: CatalogControl[];
 }): Promise<FeatureArtifact> {
   const codeBlock = formatSnippetsForPrompt(opts.snippets, opts.maxTotalChars);
 
@@ -378,7 +381,7 @@ export async function llmAnalyzeFeature(opts: {
     'DeepSeek 分析开始',
   );
 
-  const userContent = `功能关键词: ${opts.feature}\n\n${playbookBlock}\n\n请结合上述 Playbooks 与下列源码，严格按示例 JSON 结构输出路径描述：\n\n${codeBlock}${opts.baselineBlock ? `\n\n${opts.baselineBlock}` : ''}`;
+  const userContent = `功能关键词: ${opts.feature}\n\n${playbookBlock}\n\n请结合上述 Playbooks 与下列源码，严格按示例 JSON 结构输出路径描述：\n\n${codeBlock}${opts.baselineBlock ? `\n\n${opts.baselineBlock}` : ''}${opts.controlCatalog?.length ? `\n\n${catalogPromptBlock(opts.controlCatalog)}` : ''}`;
   // 输出不是合法 JSON 时补一条纠正指令重问一次（改变请求内容，避免命中缓存的同一坏应答）
   let text = '';
   let model = '';

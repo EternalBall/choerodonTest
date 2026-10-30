@@ -1,7 +1,11 @@
 type Obj = Record<string, unknown>;
 
 /** ref 形如 `<前缀>.<名字>`；前缀由 LLM 自由起名，跨次分析会漂移。步骤 element 通常只写裸名。 */
+/** 控件目录的语义 id 形如 `文件|标签|文案|容器|触发函数`，整体即引用键，不做前缀归一 */
+export const isCatalogRef = (ref: string): boolean => ref.includes('|');
+
 export function refName(ref: string): string {
+  if (isCatalogRef(ref)) return ref;
   const i = ref.indexOf('.');
   return i > 0 && i < ref.length - 1 ? ref.slice(i + 1) : ref;
 }
@@ -12,6 +16,8 @@ export function refName(ref: string): string {
  * 归一后重复 ref 保留先出现的一条。
  */
 export function canonicalizeElementRefs(artifact: Obj): Obj {
+  const hintsIn = (Array.isArray(artifact.elements_hints) ? artifact.elements_hints : []) as Obj[];
+  if (hintsIn.some((h) => isCatalogRef(String(h.ref ?? '')))) return artifact;
   const ops = (Array.isArray(artifact.operations) ? artifact.operations : []) as Obj[];
   const metas = (Array.isArray(artifact.meta_ops) ? artifact.meta_ops : []) as Obj[];
   const hints = (Array.isArray(artifact.elements_hints) ? artifact.elements_hints : []) as Obj[];

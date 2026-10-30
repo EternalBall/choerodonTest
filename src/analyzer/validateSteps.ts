@@ -29,7 +29,7 @@ function normApi(a: string): string {
 export function normalizeStepElementRefs(artifact: FeatureArtifact): FeatureArtifact {
   const full = new Map<string, string>();
   for (const h of artifact.elements_hints ?? []) {
-    if (h.ref.includes('.')) full.set(h.ref, h.ref.split('.').pop()!);
+    if (h.ref.includes('.') && !h.ref.includes('|')) full.set(h.ref, h.ref.split('.').pop()!);
   }
   if (!full.size) return artifact;
   const fix = (v?: string) => (v && full.has(v) ? full.get(v) : v);
@@ -47,7 +47,7 @@ export function normalizeStepElementRefs(artifact: FeatureArtifact): FeatureArti
 export function collectKnownElements(artifact: FeatureArtifact, extra: Iterable<string> = []): Set<string> {
   const known = new Set<string>(extra);
   for (const h of artifact.elements_hints ?? []) {
-    known.add(h.ref.includes('.') ? h.ref.split('.').pop()! : h.ref);
+    known.add(h.ref.includes('.') && !h.ref.includes('|') ? h.ref.split('.').pop()! : h.ref);
   }
   for (const e of artifact.page_edges ?? []) if (e.control?.element) known.add(e.control.element);
   for (const op of artifact.operations ?? []) {
