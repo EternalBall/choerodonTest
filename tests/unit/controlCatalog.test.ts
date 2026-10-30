@@ -202,3 +202,20 @@ test('同一函数被多个点击调用时，after 记录全部触发控件（tr
   assert.equal(ok.state, `after:${aJia.id}`);
   assert.equal(aJia.triggers, undefined);
 });
+
+test('三元条件分支的备注显示条件文本（不是字符偏移），否定侧标为“非”', () => {
+  const tern = [
+    "import { Button } from 'hzero-ui';",
+    'export default function P({ btnFlag }) {',
+    '  return (<div>',
+    "    {btnFlag ? <Button>甲</Button> : <Button>乙</Button>}",
+    '  </div>);',
+    '}',
+  ].join('\n');
+  const cat = buildControlCatalog([{ relativePath: 'tn.js', absolutePath: '/x/tn.js', content: tern }]);
+  const yes = cat.find((c) => c.label === '甲');
+  const no = cat.find((c) => c.label === '乙');
+  assert.ok(yes && no);
+  assert.ok(yes.note.includes('btnFlag') && !/\d{3,}/.test(yes.note));
+  assert.ok(no.note.includes('非(btnFlag)'));
+});

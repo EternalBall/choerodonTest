@@ -208,8 +208,10 @@ export function pruneJsxSource(content: string, file: string, absPath = file): P
       }
       if (ts.isConditionalExpression(n)) {
         visit(n.condition, cond, branches);
-        visit(n.whenTrue, true, [...branches, `${n.pos}:T`]);
-        visit(n.whenFalse, true, [...branches, `${n.pos}:F`]);
+        // 三元条件用条件文本作标识（而非字符偏移），分支备注才可读
+        const ct = n.condition.getText(sf).replace(/\s+/g, '').replace(/:/g, '_');
+        visit(n.whenTrue, true, [...branches, `cx${ct}:T`]);
+        visit(n.whenFalse, true, [...branches, `cx${ct}:F`]);
         return;
       }
       ts.forEachChild(n, (c) => visit(c, cond || dyn, branches));

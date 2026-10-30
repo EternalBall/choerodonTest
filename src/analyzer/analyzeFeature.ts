@@ -67,14 +67,15 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
     snippets,
     playbooks,
     maxTotalChars: opts.featureDir ? FEATURE_DIR_MAX_TOTAL_CHARS : undefined,
-    baselineBlock: base ? formatBaselineForPrompt(base) : undefined,
+    // 有控件目录时不注入旧基线：旧基线里的 id 会被 LLM 原样抄回（见 v1 基线循环问题）
+    baselineBlock: !controlCatalog.length && base ? formatBaselineForPrompt(base) : undefined,
     controlCatalog,
   });
   if (controlCatalog.length) {
     const applied = applyControlCatalog(raw as unknown as Record<string, unknown>, controlCatalog);
     raw = applied.artifact as unknown as typeof raw;
     if (applied.unverified.length) {
-      logger.warn({ refs: applied.unverified }, '步骤引用的 element 不在控件目录中，已记为未验证');
+      throw new Error(`步骤引用的 element 不在控件目录中（分析失败，请检查提示词或模型输出）：${applied.unverified.join(', ')}`);
     }
   } else if (base) {
     raw = repairFromBaseline(anchorToBaseline(raw, base).artifact, base).artifact;

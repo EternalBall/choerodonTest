@@ -63,7 +63,11 @@ function ctxOf(n: PrunedNode): string | undefined {
 /** branch 形如 `cx<条件文本>:T` 或 `<位置>:T/F`；取条件文本作为备注 */
 function condNote(branch: string[] | undefined): string {
   if (!branch?.length) return '运行时条件渲染';
-  return '条件：' + branch.map((b) => b.replace(/:[TF]$/, '').replace(/^cx/, '')).join(' 且 ');
+  const one = (b: string) => {
+    const text = b.replace(/:[TF]$/, '').replace(/^cx/, '');
+    return /:F$/.test(b) ? `非(${text})` : text;
+  };
+  return '条件：' + branch.map(one).join(' 且 ');
 }
 
 type Range = { start: number; end: number };
