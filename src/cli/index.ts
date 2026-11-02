@@ -294,22 +294,29 @@ program
 
 program
   .command('narrate')
-  .description('读取 compare/control-diff.json（脚本事实）与当前 feature.yaml 流程，由 LLM 归纳流程变化，输出 compare/control-flow-report.zh.md')
+  .description('按流程逐步输出变化报告：步骤取自 feature.yaml，变化标记取自控件目录差异（确定性，不调用 LLM），输出 compare/flow-change-report.zh.md')
   .requiredOption('-f, --feature <name>', '功能名')
-  .option('--feature-yaml <path>', '流程来源 feature.yaml，默认取该功能 artifacts 下的 feature.yaml')
-  .action(async (opts: { feature: string; featureYaml?: string }) => {
-    const dir = path.join(featureArtifactDir(opts.feature), 'compare');
+  .option('--label <text>', '报告中的基线说明', 'V1 vs 当前')
+  .option('--v1-yaml <path>', '旧版 feature.yaml，默认 artifacts/<功能>/v1/feature.yaml')
+  .option('--current-yaml <path>', '当前 feature.yaml，默认 artifacts/<功能>/feature.yaml')
+  .action(async (opts: { feature: string; label: string; v1Yaml?: string; currentYaml?: string }) => {
+    const base = featureArtifactDir(opts.feature);
+    const dir = path.join(base, 'compare');
     const diff = JSON.parse(await fs.readFile(path.join(dir, 'control-diff.json'), 'utf8'));
-    const { readFeatureYaml, writeNarrative } = await import('../compare/controlFlowNarrative.js');
-    const yamlPath = opts.featureYaml ?? path.join(featureArtifactDir(opts.feature), 'feature.yaml');
-    const res = await writeNarrative({
+    const YAML = (await import('yaml')).default;
+    const load = async (p: string) => YAML.parse(await fs.readFile(p, 'utf8'));
+    const { buildFlowStepReport } = await import('../compare/flowStepReport.js');
+    const res = buildFlowStepReport({
       feature: opts.feature,
+      label: opts.label,
       diff,
-      featureYaml: await readFeatureYaml(yamlPath),
-      outDir: dir,
+      current: await load(opts.currentYaml ?? path.join(base, 'feature.yaml')),
+      v1: await load(opts.v1Yaml ?? path.join(base, 'v1', 'feature.yaml')),
     });
-    console.log(`关联流程 ${res.flowsWithChange} 条${res.droppedIds.length ? `｜剔除编造控件引用 ${res.droppedIds.length} 处` : ''}`);
-    console.log(`报告: ${path.join(dir, 'control-flow-report.zh.md')}`);
+    const out = path.join(dir, 'flow-change-report.zh.md');
+    await fs.writeFile(out, res.markdown, 'utf8');
+    console.log(`流程 ${res.totalFlows} 条，引用变化的 ${res.changedFlows} 条`);
+    console.log(`报告: ${out}`);
   });
 
 program
