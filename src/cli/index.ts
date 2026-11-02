@@ -293,6 +293,26 @@ program
   });
 
 program
+  .command('narrate')
+  .description('读取 compare/control-diff.json（脚本事实）与当前 feature.yaml 流程，由 LLM 归纳流程变化，输出 compare/control-flow-report.zh.md')
+  .requiredOption('-f, --feature <name>', '功能名')
+  .option('--feature-yaml <path>', '流程来源 feature.yaml，默认取该功能 artifacts 下的 feature.yaml')
+  .action(async (opts: { feature: string; featureYaml?: string }) => {
+    const dir = path.join(featureArtifactDir(opts.feature), 'compare');
+    const diff = JSON.parse(await fs.readFile(path.join(dir, 'control-diff.json'), 'utf8'));
+    const { readFeatureYaml, writeNarrative } = await import('../compare/controlFlowNarrative.js');
+    const yamlPath = opts.featureYaml ?? path.join(featureArtifactDir(opts.feature), 'feature.yaml');
+    const res = await writeNarrative({
+      feature: opts.feature,
+      diff,
+      featureYaml: await readFeatureYaml(yamlPath),
+      outDir: dir,
+    });
+    console.log(`关联流程 ${res.flowsWithChange} 条${res.droppedIds.length ? `｜剔除编造控件引用 ${res.droppedIds.length} 处` : ''}`);
+    console.log(`报告: ${path.join(dir, 'control-flow-report.zh.md')}`);
+  });
+
+program
   .command('facts')
   .description('静态提取功能目录下的字段事实（fields / queryFields），不调用 LLM，YAML 输出到 stdout')
   .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)
