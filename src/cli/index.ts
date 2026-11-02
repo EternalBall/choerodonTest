@@ -294,28 +294,34 @@ program
 
 program
   .command('narrate')
-  .description('按流程逐步输出变化报告：步骤取自 feature.yaml，变化标记取自控件目录差异（确定性，不调用 LLM），输出 compare/flow-change-report.zh.md')
+  .description('按流程逐步输出变化报告（与功能无关）：步骤取自 feature.yaml，控件变化取自控件目录差异，逻辑变化取自源码函数哈希；不调用 LLM，输出 compare/flow-change-report.zh.md')
   .requiredOption('-f, --feature <name>', '功能名')
   .option('--label <text>', '报告中的基线说明', 'V1 vs 当前')
   .option('--v1-yaml <path>', '旧版 feature.yaml，默认 artifacts/<功能>/v1/feature.yaml')
   .option('--current-yaml <path>', '当前 feature.yaml，默认 artifacts/<功能>/feature.yaml')
-  .action(async (opts: { feature: string; label: string; v1Yaml?: string; currentYaml?: string }) => {
+  .option('--v1-dir <path>', '旧版功能源码目录（用于函数逻辑比对，缺省则不比对）')
+  .option('--current-dir <path>', '当前功能源码目录（用于函数逻辑比对，缺省则不比对）')
+  .action(async (opts: { feature: string; label: string; v1Yaml?: string; currentYaml?: string; v1Dir?: string; currentDir?: string }) => {
     const base = featureArtifactDir(opts.feature);
     const dir = path.join(base, 'compare');
     const diff = JSON.parse(await fs.readFile(path.join(dir, 'control-diff.json'), 'utf8'));
     const YAML = (await import('yaml')).default;
     const load = async (p: string) => YAML.parse(await fs.readFile(p, 'utf8'));
     const { buildFlowStepReport } = await import('../compare/flowStepReport.js');
+    const { fingerprintFunctions, readSourceText } = await import('../compare/sourceFingerprint.js');
     const res = buildFlowStepReport({
       feature: opts.feature,
       label: opts.label,
       diff,
       current: await load(opts.currentYaml ?? path.join(base, 'feature.yaml')),
       v1: await load(opts.v1Yaml ?? path.join(base, 'v1', 'feature.yaml')),
+      currentFns: opts.currentDir ? await fingerprintFunctions(opts.currentDir) : undefined,
+      v1Fns: opts.v1Dir ? await fingerprintFunctions(opts.v1Dir) : undefined,
+      currentText: opts.currentDir ? await readSourceText(opts.currentDir) : undefined,
     });
     const out = path.join(dir, 'flow-change-report.zh.md');
     await fs.writeFile(out, res.markdown, 'utf8');
-    console.log(`流程 ${res.totalFlows} 条，引用变化的 ${res.changedFlows} 条`);
+    console.log(`流程 ${res.totalFlows} 条，有变化 ${res.changedFlows} 条`);
     console.log(`报告: ${out}`);
   });
 
