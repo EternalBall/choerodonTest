@@ -11,7 +11,7 @@ import { extractFieldFacts, extractRenderedEditableFields } from './staticExtrac
 import { normalizeStepElementRefs } from './validateSteps.js';
 import { anchorToBaseline, formatBaselineForPrompt, loadBaselineArtifact, pruneUnrenderedFields, repairFromBaseline } from './baselineAnchor.js';
 import { llmAnalyzeFeature } from './llmAnalyze.js';
-import { applyControlCatalog, buildControlCatalog } from './controlCatalog.js';
+import { applyControlCatalog, buildControlCatalog, stripUnknownElements } from './controlCatalog.js';
 import { locatePages, pickPageEntries } from './llmLocate.js';
 
 export type AnalyzeOptions = {
@@ -75,7 +75,7 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
     const applied = applyControlCatalog(raw as unknown as Record<string, unknown>, controlCatalog);
     raw = applied.artifact as unknown as typeof raw;
     if (applied.unverified.length) {
-      throw new Error(`步骤引用的 element 不在控件目录中（分析失败，请检查提示词或模型输出）：${applied.unverified.join(', ')}`);
+      logger.warn({ refs: applied.unverified }, '步骤引用的 element 不在控件目录中，将清除并记入审查建议');
     }
   } else if (base) {
     raw = repairFromBaseline(anchorToBaseline(raw, base).artifact, base).artifact;
@@ -89,6 +89,19 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
   raw = normalizeStepElementRefs(raw);
   raw = assignStableOperationIds(raw);
   raw = pruneUnrenderedFields(raw, extractRenderedEditableFields(snippets)).artifact;
+  if (controlCatalog.length) {
+    // 最终检查：所有 element 必须来自控件目录，否则清除并记入审查建议（不让未知 id 进入流程）
+    const stripped = stripUnknownElements(raw as unknown as Record<string, unknown>, controlCatalog);
+    raw = stripped.artifact as unknown as typeof raw;
+    if (stripped.removed.length) {
+      logger.warn({ refs: stripped.removed }, '清除不在控件目录中的 element');
+      const risks = stripped.removed.map((r) => `控件引用不在源码目录中，已清除：${r}`);
+      raw.review_suggestions = {
+        ...(raw.review_suggestions ?? {}),
+        risks: [...(raw.review_suggestions?.risks ?? []), ...risks],
+      } as typeof raw.review_suggestions;
+    }
+  }
   const artifact = compileMetaOpsAndFlows(raw, { force: true, knownElements });
   if (located) {
     const g = located.result.gaps;

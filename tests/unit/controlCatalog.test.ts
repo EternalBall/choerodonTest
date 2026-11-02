@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildControlCatalog } from '../../src/analyzer/controlCatalog.js';
+import { buildControlCatalog, stripUnknownElements } from '../../src/analyzer/controlCatalog.js';
 
 const src = `
 import { Button, Modal } from 'hzero-ui';
@@ -218,4 +218,15 @@ test('三元条件分支的备注显示条件文本（不是字符偏移），�
   assert.ok(yes && no);
   assert.ok(yes.note.includes('btnFlag') && !/\d{3,}/.test(yes.note));
   assert.ok(no.note.includes('非(btnFlag)'));
+});
+
+test('stripUnknownElements 递归清除目录外的 element，保留目录内的 element', () => {
+  const cat = buildControlCatalog([{ relativePath: 'k.js', absolutePath: '/x/k.js', content: "import { Button } from 'hzero-ui';\nexport default function P() { return <Button>保存</Button>; }\n" }]);
+  const ok = cat[0].id;
+  const raw = { operations: [{ steps: [{ element: ok }, { element: 'x.js|Table|Table@2010||' }] }], meta_ops: [{ element: 'bad|id' }] };
+  const { artifact, removed } = stripUnknownElements(raw, cat);
+  assert.deepEqual(removed.sort(), ['bad|id', 'x.js|Table|Table@2010||'].sort());
+  assert.equal((artifact.operations as { steps: { element?: string }[] }[])[0].steps[0].element, ok);
+  assert.equal('element' in (artifact.operations as { steps: object[] }[])[0].steps[1], false);
+  assert.equal('element' in (artifact.meta_ops as object[])[0], false);
 });

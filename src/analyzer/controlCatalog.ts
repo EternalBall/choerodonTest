@@ -322,6 +322,34 @@ export function catalogPromptBlock(controls: CatalogControl[]): string {
 }
 
 /**
+ * 递归检查产物中所有 `element` 字段：不在控件目录中的值删除该字段，返回被删的原值。
+ * 在最终归一化之后调用，覆盖步骤、元操作等任意嵌套位置。
+ */
+export function stripUnknownElements(
+  raw: Record<string, unknown>,
+  controls: CatalogControl[],
+): { artifact: Record<string, unknown>; removed: string[] } {
+  const ids = new Set(controls.map((c) => c.id));
+  const removed: string[] = [];
+  const walk = (x: unknown): unknown => {
+    if (Array.isArray(x)) return x.map(walk);
+    if (x && typeof x === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(x as Record<string, unknown>)) {
+        if (k === 'element' && typeof v === 'string' && v && !ids.has(v)) {
+          removed.push(v);
+          continue;
+        }
+        out[k] = walk(v);
+      }
+      return out;
+    }
+    return x;
+  };
+  return { artifact: walk(raw) as Record<string, unknown>, removed: [...new Set(removed)] };
+}
+
+/**
  * 用控件目录替换 elements_hints，并检查步骤/元操作引用的 element 是否都在目录中。
  * 不在目录中的引用原样保留并返回，供调用方记录为未验证。
  */
