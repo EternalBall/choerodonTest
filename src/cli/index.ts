@@ -266,6 +266,33 @@ program
   });
 
 program
+  .command('catalog-diff')
+  .description('按语义 id 对比两份源码的控件目录（确定性，不调用 LLM），输出 control-diff.md / .json 到 artifacts/<功能>/compare/')
+  .requiredOption('-f, --feature <name>', '功能名')
+  .requiredOption('--before-dir <path>', '旧版功能源码目录（绝对路径）')
+  .requiredOption('--before-project <path>', '旧版前端源码根目录')
+  .requiredOption('--after-dir <path>', '新版功能源码目录（绝对路径）')
+  .requiredOption('--after-project <path>', '新版前端源码根目录')
+  .option('--label <text>', '报告标题中的版本说明', '旧版 vs 新版')
+  .action(async (opts: { feature: string; beforeDir: string; beforeProject: string; afterDir: string; afterProject: string; label: string }) => {
+    const load = async (project: string, dir: string) => {
+      const { snippets } = await retrieveFeatureCode({ feature: opts.feature, projectRoot: project, featureDir: dir });
+      return buildControlCatalog(snippets);
+    };
+    const { diffControlCatalogs, renderControlDiffMd } = await import('../compare/controlCatalogDiff.js');
+    const before = await load(opts.beforeProject, opts.beforeDir);
+    const after = await load(opts.afterProject, opts.afterDir);
+    const d = diffControlCatalogs(before, after);
+    const dir = path.join(featureArtifactDir(opts.feature), 'compare');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'control-diff.json'), JSON.stringify(d, null, 2), 'utf8');
+    const md = path.join(dir, 'control-diff.md');
+    await fs.writeFile(md, renderControlDiffMd(d, `${opts.feature}：控件目录差异（${opts.label}）`), 'utf8');
+    console.log(`旧 ${before.length} 个 / 新 ${after.length} 个｜未变 ${d.unchanged}｜属性变化 ${d.changed.length}｜新增 ${d.added.length}｜移除 ${d.removed.length}｜疑似移动 ${d.possiblyMoved.length}`);
+    console.log(`报告: ${md}`);
+  });
+
+program
   .command('facts')
   .description('静态提取功能目录下的字段事实（fields / queryFields），不调用 LLM，YAML 输出到 stdout')
   .option('-p, --project <path>', '被测前端源码根目录', TARGET_PROJECT_DEFAULT)

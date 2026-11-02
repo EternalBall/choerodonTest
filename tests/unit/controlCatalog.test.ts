@@ -230,3 +230,21 @@ test('stripUnknownElements 递归清除目录外的 element，保留目录内的
   assert.equal('element' in (artifact.operations as { steps: object[] }[])[0].steps[1], false);
   assert.equal('element' in (artifact.meta_ops as object[])[0], false);
 });
+
+test('控件目录差异：新增、移除、属性变化与文件移动分别识别', async () => {
+  const { diffControlCatalogs } = await import('../../src/compare/controlCatalogDiff.js');
+  const mk = (file: string, src: string) => buildControlCatalog([{ relativePath: file, absolutePath: '/x/' + file, content: src }]);
+  const oldSrc = "import { Button } from 'hzero-ui';\nexport default function P({ f }) { return <div><Button>保存</Button><Button>删除</Button></div>; }\n";
+  const newSrc = "import { Button } from 'hzero-ui';\nexport default function P({ f }) { return <div><Button>保存</Button><Button>撤销</Button></div>; }\n";
+  const a = mk('a.js', oldSrc);
+  const b = mk('a.js', newSrc);
+  const d = diffControlCatalogs(a, b);
+  assert.deepEqual(d.added.map((c) => c.label), ['撤销']);
+  assert.deepEqual(d.removed.map((c) => c.label), ['删除']);
+  assert.equal(d.changed.length, 0);
+  assert.equal(d.unchanged, 1);
+  const moved = mk('b.js', oldSrc);
+  const d2 = diffControlCatalogs(a, moved);
+  assert.equal(d2.possiblyMoved.length, 2);
+  assert.equal(d2.added.length + d2.removed.length, 0);
+});
