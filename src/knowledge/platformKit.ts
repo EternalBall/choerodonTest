@@ -92,11 +92,13 @@ async function loadLocateDraftFull(feature: string): Promise<{ draft: ElementMap
 
 /**
  * 字段类定位的作用域。生成器统一写 `.page-content <sel>`（可读），建库时改写为：
- * 有打开的 c7n-pro 弹层（Modal/Drawer，类 c7n-pro-modal-active）时只在弹层内找，否则在页面主体内找。
+ * 有可见的 c7n-pro 弹层（Modal/Drawer）时只在弹层内找，否则在页面主体内找。
  * 依据：c7n-pro Modal 经 Portal 渲染在 .page-content 之外（DEV 实测 LOV/复制弹窗），
  * 写死 .page-content 会让弹窗里的字段永远找不到。
  */
-export const ACTIVE_MODAL_CSS = '.c7n-pro-modal-wrapper.c7n-pro-modal-active';
+// 不用 c7n-pro-modal-active：它只标在「最上层带遮罩」的弹层上（choerodon-ui modal-container/ModalContainer.js:605），
+// 叠层 LOV 关闭前后、无遮罩抽屉都会让字段所在弹层不带 active（DEV 实测数据项抽屉字段 0 命中）。改用 Playwright :visible。
+export const ACTIVE_MODAL_CSS = '.c7n-pro-modal-wrapper:visible';
 const PAGE_CONTENT_PREFIX = '.page-content ';
 
 export function inActiveArea(sel: string): string {

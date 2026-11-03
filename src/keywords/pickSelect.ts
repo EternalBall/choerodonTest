@@ -18,6 +18,20 @@ export async function pickSelect(
 ): Promise<void> {
   const page = ctx.page;
   const wrapper = await resolveWrapper(ctx, args);
+  // 表格行内编辑：编辑器在单元格激活后才渲染；激活后仍没有编辑器 = 条件渲染（如 editor 返回 canEdit && flag && <Select/>），
+  // 本行不需要填写该字段，跳过并留日志（真缺必填会在保存时由校验提示暴露）
+  const name = args.name != null ? String(args.name) : '';
+  if (name && !(await wrapper.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false))) {
+    const cell = (await activeScope(page)).locator(`.c7n-pro-table-tbody td[data-index="${cssEscape(name)}"]`).first();
+    if (await cell.isVisible().catch(() => false)) {
+      await cell.click();
+      const shown = await wrapper.waitFor({ state: 'visible', timeout: 3_000 }).then(() => true).catch(() => false);
+      if (!shown) {
+        console.log(`[pickSelect] ${name} 是表格行内字段，当前行没有编辑器（条件渲染），跳过`);
+        return;
+      }
+    }
+  }
   const trigger = wrapper.locator(
     '.c7n-pro-select-trigger, .c7n-pro-select, input.c7n-pro-input',
   ).first();

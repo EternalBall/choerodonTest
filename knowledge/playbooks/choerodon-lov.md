@@ -198,4 +198,4 @@ tableLovOpen:
 | 对 Lov 填 `${ENV.ATA_SAMPLE}` 当文本 | 用 `first: true` 选表第一行 |
 | popup Lov 当成 `.c7n-pro-select-popup` | 用 `.c7n-pro-select-lov-popup`（内含 Table） |
 | 与 filterBar / 页头表单同名字段冲突 | `within` / `.page-content` 限定 |
-| 弹窗里的 LOV 打不开（等待 `.page-content … .icon-search` 超时） | Modal 经 Portal 渲染在 `.page-content` 外；建库已把 `.page-content X` 改写为 `活动弹层 X, 无弹层时 .page-content X`（platformKit.scopeFieldCss），人工 overlay 不改写 |
+| 弹窗里的 LOV 打不开（等待 `.page-content … .icon-search` 超时） | Modal 经 Portal 渲染在 `.page-content` 外；建库已把 `.page-content X` 改写为 `可见弹层 X, 无可见弹层时 .page-content X`（弹层判定用 :visible，不用 -active）（platformKit.scopeFieldCss），人工 overlay 不改写 |
