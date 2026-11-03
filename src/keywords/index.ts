@@ -72,7 +72,19 @@ export const actions: Record<string, ActionHandler> = {
   },
 
   async fill(ctx, args) {
-    await ctx.el(str(args.target, 'target')).fill(str(args.value, 'value'));
+    const target = str(args.target, 'target');
+    const input = ctx.el(target);
+    await input.first().waitFor({ state: 'visible', timeout: 20_000 }).catch(() => undefined);
+    // 由其他字段带出的只读字段（如 LOV 选完自动回填的描述，DS 里 disabled + bind）：有值则保留，无值说明前一步没生效
+    const fixed = await readonlyValue(input.first());
+    if (fixed !== null) {
+      if (fixed) {
+        console.log(`[fill] ${target} 不可编辑（多为由其他字段带出），保留当前值「${fixed}」`);
+        return;
+      }
+      throw new Error(`fill: ${target} 不可编辑且无值（若由 LOV/下拉带出，说明前一步选择未生效）`);
+    }
+    await input.fill(str(args.value, 'value'), { timeout: 20_000 });
   },
 
   async fillForm(ctx, args) {

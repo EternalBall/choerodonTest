@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import type { ActionContext } from './index.js';
 import { waitReady } from './waitReady.js';
-import { clickWithDiagnosis, detectEnvConfigError, EnvNotReadyError } from './scope.js';
+import { activeScope, clickWithDiagnosis, detectEnvConfigError, EnvNotReadyError } from './scope.js';
 
 /**
  * Choerodon LOV：点搜索图标 → 弹层 → 搜/选行 → 确定（或点行即选）
@@ -12,7 +12,9 @@ export async function pickLov(
 ): Promise<void> {
   const openRef = String(args.open || '');
   if (!openRef) throw new Error('pickLov 需要 open（LOV 搜索图标/触发器）');
-  await clickWithDiagnosis(ctx.el(openRef), openRef);
+  const openLoc = ctx.el(openRef);
+  await activateCellEditor(ctx, openLoc);
+  await clickWithDiagnosis(openLoc, openRef);
 
   const dialog = resolveDialog(ctx, args);
   // 表格内 LOV 在候选仅 1 条时会直接回填、不弹层：5s 内未出现弹层则视为已自动选中
@@ -108,4 +110,22 @@ export function visibleLovDialog(page: Page): Locator {
       '.c7n-pro-modal-wrapper:visible, .c7n-modal-wrap:visible, .c7n-pro-select-lov-popup:visible, .c7n-pro-lov-popup:visible, [role="dialog"]:visible',
     )
     .last();
+}
+
+/**
+ * c7n-pro Table 行内编辑：编辑器（含 LOV 放大镜）只在单元格被激活后才渲染。
+ * 打开图标 3s 内没出现时，在最上层弹层/页面里找 data-index=字段名 的单元格点一下激活编辑器。
+ * 字段名取自定位里的 input[name="…"]（元素库字段定位统一这样生成）。
+ */
+async function activateCellEditor(ctx: ActionContext, openLoc: Locator): Promise<void> {
+  const shown = await openLoc.first().waitFor({ state: 'visible', timeout: 3_000 }).then(() => true).catch(() => false);
+  if (shown) return;
+  const m = /input\[name=\\?"([A-Za-z_]\w*)\\?"\]/.exec(String(openLoc));
+  if (!m) return;
+  const scope = await activeScope(ctx.page);
+  const cell = scope.locator(`.c7n-pro-table-tbody td[data-index="${m[1]}"]`).first();
+  if (await cell.isVisible().catch(() => false)) {
+    console.log(`[pickLov] ${m[1]} 是表格行内编辑字段，先点击单元格激活编辑器`);
+    await cell.click();
+  }
 }
