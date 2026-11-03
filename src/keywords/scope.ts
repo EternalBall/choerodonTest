@@ -40,3 +40,23 @@ export async function readonlyValue(input: Locator): Promise<string | null> {
   if (!disabled) return null;
   return (await input.inputValue().catch(() => '')) ?? '';
 }
+
+/**
+ * 带诊断的点击：目标不出现 / 处于禁用状态时在限定时间内给出明确原因，
+ * 而不是让 Playwright 一直等到整条用例超时（禁用按钮多因当前数据状态不允许，如单据已关闭时「编辑」置灰）。
+ */
+export async function clickWithDiagnosis(loc: Locator, target: string, timeout = 20_000): Promise<void> {
+  try {
+    await loc.waitFor({ state: 'visible', timeout });
+  } catch (e) {
+    throw new Error(`点击目标失败（${target}）：${timeout / 1000}s 内未出现。${String((e as Error).message).split('\n')[0]}`);
+  }
+  if (await loc.isDisabled().catch(() => false)) {
+    throw new Error(`点击目标失败（${target}）：目标处于禁用状态，多为当前数据状态不允许此操作（数据问题，非定位问题）`);
+  }
+  try {
+    await loc.click({ timeout });
+  } catch (e) {
+    throw new Error(`点击目标失败（${target}）：${String((e as Error).message).split('\n')[0]}`);
+  }
+}

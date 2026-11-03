@@ -1,3 +1,4 @@
+import { clickWithDiagnosis } from './scope.js';
 import type { Page, Response } from '@playwright/test';
 import type { ActionContext } from './index.js';
 
@@ -53,10 +54,10 @@ export async function clickExpectApi(
   }
   // 点击本身失败（目标不存在 / 被遮挡）要单独报，不能混成「没等到接口」
   try {
-    await loc.click({ timeout: Number(args.clickTimeout ?? 20_000) });
+    await clickWithDiagnosis(loc, String(target), Number(args.clickTimeout ?? 20_000));
   } catch (e) {
     resultPromise.catch(() => undefined);
-    throw new Error(`点击目标失败（${target}）：${String((e as Error).message).split('\n')[0]}`);
+    throw e;
   }
   let outcome: Outcome;
   try {

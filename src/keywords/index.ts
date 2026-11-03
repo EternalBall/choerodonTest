@@ -10,7 +10,7 @@ import { clickExpectApi } from './clickExpectApi.js';
 import { assertTableEmpty, assertTableHasRows } from './tableAssert.js';
 import { openDetailRow } from './openDetailRow.js';
 import type { VarMap } from './vars.js';
-import { activeScope, dismissGlobalPrompt, readonlyValue } from './scope.js';
+import { activeScope, dismissGlobalPrompt, readonlyValue, clickWithDiagnosis } from './scope.js';
 
 type El = ReturnType<typeof createElResolver>;
 type AssertDef = z.infer<typeof AssertSchema>;
@@ -65,7 +65,8 @@ export const actions: Record<string, ActionHandler> = {
     } else if (typeof args.nth === 'number') {
       loc = loc.nth(Number(args.nth));
     }
-    await loc.click();
+    const label = String(args.target ?? args.text ?? `${String(args.role)}:${String(args.name)}`);
+    await clickWithDiagnosis(loc, label, Number(args.clickTimeout ?? 20_000));
   },
 
   async fill(ctx, args) {
