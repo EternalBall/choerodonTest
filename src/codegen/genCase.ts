@@ -14,6 +14,7 @@ import type { FeatureArtifact, Suite } from '../core/schema.js';
 import { logger } from '../core/logger.js';
 import { featureSlug } from '../knowledge/featureSlug.js';
 import { llmGenSuite } from './llmGenSuite.js';
+import { applyDataStrategy } from './dataStrategy.js';
 import { dropSelfReady, findDanglingRefs, formatDangling, type DanglingRefs } from './suiteRefs.js';
 
 export type GenPipelineResult = {
@@ -140,12 +141,13 @@ export async function runGenPipeline(opts: {
   if (selfReady.length) {
     logger.warn({ fixes: selfReady }, '已去掉「点击后等被点元素自身可见」的就绪条件（编辑/切换类按钮点完即消失）');
   }
+  const dataStrategy = applyDataStrategy(suite);
   const caseFile = await writeGeneratedSuite(suite, artifact.feature, outputSlug);
   const dangling = findDanglingRefs(suite, lib, [ns]);
   const refCheckFile = path.join(path.dirname(caseFile), 'ref-check.json');
   await fs.writeFile(
     refCheckFile,
-    JSON.stringify({ ok: dangling.length === 0, dangling, rejectedElements: elements.rejected, selfReadyDropped: selfReady }, null, 2),
+    JSON.stringify({ ok: dangling.length === 0, dangling, rejectedElements: elements.rejected, selfReadyDropped: selfReady, dataStrategy }, null, 2),
     'utf8',
   );
   if (dangling.length) {

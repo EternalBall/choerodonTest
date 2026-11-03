@@ -9,6 +9,8 @@ import { pickSelect } from './pickSelect.js';
 import { clickExpectApi } from './clickExpectApi.js';
 import { assertTableEmpty, assertTableHasRows } from './tableAssert.js';
 import { openDetailRow } from './openDetailRow.js';
+import { fillRequiredEmpty } from './requiredFields.js';
+import { selectTableRow } from './selectTableRow.js';
 import type { VarMap } from './vars.js';
 import { activeScope, dismissGlobalPrompt, readonlyValue, clickWithDiagnosis } from './scope.js';
 
@@ -139,6 +141,10 @@ export const actions: Record<string, ActionHandler> = {
         }
         await input.fill(value);
       }
+      // 用例未覆盖的必填空字段（分析缺口）自动补填并留日志；fillRequired: false 可关闭
+      if (args.fillRequired !== false) {
+        await fillRequiredEmpty(ctx, `${process.env.TEST_DATA_PREFIX ?? 'autotest'}${process.env.ATA_RUN_ID ?? Date.now()}`);
+      }
       return;
     }
 
@@ -180,6 +186,7 @@ export const actions: Record<string, ActionHandler> = {
   pickSelect,
   clickExpectApi,
   openDetailRow,
+  selectTableRow,
   assertTableHasRows,
   assertTableEmpty,
 

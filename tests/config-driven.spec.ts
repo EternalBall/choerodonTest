@@ -62,6 +62,7 @@ if (!caseFile || !fs.existsSync(caseFile)) {
               test.skip(true, `跳过：步骤「${step.name}」依赖的元素 ${step.skipIfMissing} 不存在（可能被当前账号的列个性化隐藏）`);
             }
           }
+          let dataNotReady: string | undefined;
           await test.step(step.name, async () => {
             const handler = actions[step.action];
             if (!handler) {
@@ -90,8 +91,14 @@ if (!caseFile || !fs.existsSync(caseFile)) {
               await attachStepScreenshot(page, ctx, testInfo, step, stepError);
             }
 
+            // 数据不具备：页面与定位正常、只是没有满足前置条件的数据 → 整条标为跳过（写明原因），不算失败
+            if (stepError instanceof Error && stepError.name === 'DataNotReadyError') {
+              dataNotReady = stepError.message;
+              return;
+            }
             if (stepError) throw stepError;
           });
+          if (dataNotReady) test.skip(true, `跳过：步骤「${step.name}」${dataNotReady}`);
         }
       });
     }

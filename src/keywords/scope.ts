@@ -60,3 +60,20 @@ export async function clickWithDiagnosis(loc: Locator, target: string, timeout =
     throw new Error(`点击目标失败（${target}）：${String((e as Error).message).split('\n')[0]}`);
   }
 }
+
+/**
+ * 数据不具备：页面与定位都正常，但当前环境里没有满足前置条件的数据（如没有本测试自己造的、
+ * 状态允许编辑的记录）。执行器据此把用例标为跳过并写明原因，不算失败。
+ */
+export class DataNotReadyError extends Error {
+  readonly code = 'DATA_NOT_READY';
+  constructor(message: string) {
+    super(message);
+    this.name = 'DataNotReadyError';
+  }
+}
+
+/** 测试自有数据的前缀（造数统一用 ${ENV.TEST_DATA_PREFIX}${ENV.ATA_RUN_ID}） */
+export function testDataPrefix(): string {
+  return process.env.TEST_DATA_PREFIX || 'autotest';
+}
