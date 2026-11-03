@@ -23,8 +23,21 @@ export async function selectTableRow(ctx: ActionContext, args: Record<string, un
       ownPrefix ? `数据不具备：列表当前页没有测试自有数据（行内含「${ownPrefix}」），需先运行新建用例造数` : '数据不具备：列表没有数据行',
     );
   }
-  for (let i = 0; i < Math.min(n, want); i++) {
+  // 勾选框禁用 = 该行状态不允许此批量操作（如已关闭的单据），跳过换下一行
+  let picked = 0;
+  let disabled = 0;
+  for (let i = 0; i < n && picked < want; i++) {
     const box = rows.nth(i).locator('input.c7n-pro-checkbox').first();
+    if (await box.isDisabled().catch(() => true)) {
+      disabled++;
+      continue;
+    }
     await box.click({ timeout: 15_000 });
+    picked++;
+  }
+  if (picked < want) {
+    throw new DataNotReadyError(
+      `数据不具备：需要勾选 ${want} 行，当前页${ownPrefix ? '测试自有' : ''}数据 ${n} 行中 ${disabled} 行勾选框禁用（状态不允许此操作）`,
+    );
   }
 }

@@ -25,6 +25,13 @@ if (!caseFile || !fs.existsSync(caseFile)) {
   });
 } else {
   const suite = await loadSuite(caseFile);
+  // 每条用例的造数编号互不相同（运行编号 + 用例序号）：同一轮里「新建」与「复制」都用
+  // \${ENV.TEST_DATA_PREFIX}\${ENV.ATA_RUN_ID} 作编码时会撞「编码已存在」（DEV 实测）
+  const runId = process.env.ATA_RUN_ID!;
+  suite.cases.forEach((c, i) => {
+    const caseRunId = `${runId}${String(i).padStart(2, '0')}`;
+    c.steps = JSON.parse(JSON.stringify(c.steps).split(runId).join(caseRunId));
+  });
   const elements = await loadElementLibrary();
   const namespaces = new Set(Object.keys(elements));
 
@@ -92,7 +99,7 @@ if (!caseFile || !fs.existsSync(caseFile)) {
             }
 
             // 数据不具备：页面与定位正常、只是没有满足前置条件的数据 → 整条标为跳过（写明原因），不算失败
-            if (stepError instanceof Error && stepError.name === 'DataNotReadyError') {
+            if (stepError instanceof Error && (stepError.name === 'DataNotReadyError' || stepError instanceof TableNoDataError)) {
               dataNotReady = stepError.message;
               return;
             }

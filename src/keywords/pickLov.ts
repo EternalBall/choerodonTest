@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import type { ActionContext } from './index.js';
 import { waitReady } from './waitReady.js';
+import { clickWithDiagnosis } from './scope.js';
 
 /**
  * Choerodon LOV：点搜索图标 → 弹层 → 搜/选行 → 确定（或点行即选）
@@ -11,7 +12,7 @@ export async function pickLov(
 ): Promise<void> {
   const openRef = String(args.open || '');
   if (!openRef) throw new Error('pickLov 需要 open（LOV 搜索图标/触发器）');
-  await ctx.el(openRef).click();
+  await clickWithDiagnosis(ctx.el(openRef), openRef);
 
   const dialog = resolveDialog(ctx, args);
   // 表格内 LOV 在候选仅 1 条时会直接回填、不弹层：5s 内未出现弹层则视为已自动选中
@@ -21,7 +22,13 @@ export async function pickLov(
     .catch(() => false);
   if (!shown) {
     if (args.autoSelect === false) await expect(dialog).toBeVisible({ timeout: 25_000 });
-    else return;
+    else {
+      // 视为「仅 1 条候选已自动回填」前先核实字段确实有值，否则是弹层没打开（不能静默通过）
+      const input = ctx.el(openRef).first().locator('xpath=ancestor::*[contains(@class,"-wrapper")][1]//input[@name]').first();
+      const val = (await input.count()) ? await input.inputValue().catch(() => '') : 'unknown';
+      if (!val) throw new Error(`pickLov: 点击 ${openRef} 后 5s 内未出现选择弹层，字段仍为空`);
+      return;
+    }
   }
 
   if (args.dialogSpin) {
