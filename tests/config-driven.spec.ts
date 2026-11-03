@@ -98,8 +98,8 @@ if (!caseFile || !fs.existsSync(caseFile)) {
               await attachStepScreenshot(page, ctx, testInfo, step, stepError);
             }
 
-            // 数据不具备：页面与定位正常、只是没有满足前置条件的数据 → 整条标为跳过（写明原因），不算失败
-            if (stepError instanceof Error && (stepError.name === 'DataNotReadyError' || stepError instanceof TableNoDataError)) {
+            // 数据/环境不具备：页面与定位正常，只是缺满足前置条件的数据或环境配置 → 整条标为跳过（写明原因），不算失败
+            if (stepError instanceof Error && (stepError.name === 'DataNotReadyError' || stepError.name === 'EnvNotReadyError' || stepError instanceof TableNoDataError)) {
               dataNotReady = stepError.message;
               return;
             }

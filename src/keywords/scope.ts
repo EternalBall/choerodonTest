@@ -45,9 +45,29 @@ export async function readonlyValue(input: Locator): Promise<string | null> {
  * 带诊断的点击：目标不出现 / 处于禁用状态时在限定时间内给出明确原因，
  * 而不是让 Playwright 一直等到整条用例超时（禁用按钮多因当前数据状态不允许，如单据已关闭时「编辑」置灰）。
  */
+/**
+ * 多个命中时按「当前可见、且不在未激活页签面板内」收敛（c7n Tabs 未激活面板带 c7n-tabs-tabpane-inactive，
+ * 切换动画期间仍可能有尺寸，Playwright 视为可见）。收敛到唯一则返回它，否则原样返回交给 strict 报错。
+ */
+export async function narrowToActive(loc: Locator): Promise<Locator> {
+  const n = await loc.count().catch(() => 0);
+  if (n <= 1) return loc;
+  const keep: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const el = loc.nth(i);
+    if (!(await el.isVisible().catch(() => false))) continue;
+    const inactive = await el
+      .evaluate((node: any) => !!node.closest('.c7n-tabs-tabpane-inactive, [aria-hidden="true"]')) // eslint-disable-line @typescript-eslint/no-explicit-any
+      .catch(() => false);
+    if (!inactive) keep.push(i);
+  }
+  return keep.length === 1 ? loc.nth(keep[0]) : loc;
+}
+
 export async function clickWithDiagnosis(loc: Locator, target: string, timeout = 20_000): Promise<void> {
   try {
-    await loc.waitFor({ state: 'visible', timeout });
+    await loc.first().waitFor({ state: 'visible', timeout });
+    loc = await narrowToActive(loc);
   } catch (e) {
     throw new Error(`点击目标失败（${target}）：${timeout / 1000}s 内未出现。${String((e as Error).message).split('\n')[0]}`);
   }
@@ -76,4 +96,20 @@ export class DataNotReadyError extends Error {
 /** 测试自有数据的前缀（造数统一用 ${ENV.TEST_DATA_PREFIX}${ENV.ATA_RUN_ID}） */
 export function testDataPrefix(): string {
   return process.env.TEST_DATA_PREFIX || 'autotest';
+}
+
+/** 环境不具备：功能依赖的配置在当前环境缺失（如 LOV 值集视图未定义），与用例和定位无关 */
+export class EnvNotReadyError extends Error {
+  readonly code = 'ENV_NOT_READY';
+  constructor(message: string) {
+    super(message);
+    this.name = 'EnvNotReadyError';
+  }
+}
+
+/** 弹层里出现的平台配置缺失提示（hzero LOV：「值集视图未定义: "XXX", 请维护值集视图!」） */
+export async function detectEnvConfigError(dialog: Locator): Promise<string | undefined> {
+  const text = ((await dialog.innerText().catch(() => '')) ?? '').replace(/\s+/g, ' ');
+  const m = /值集视图未定义[^!！]*[!！]?|值集[^，,。]*未定义|未找到值集[^，,。]*/.exec(text);
+  return m?.[0];
 }

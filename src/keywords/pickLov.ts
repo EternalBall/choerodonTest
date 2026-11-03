@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import type { ActionContext } from './index.js';
 import { waitReady } from './waitReady.js';
-import { clickWithDiagnosis } from './scope.js';
+import { clickWithDiagnosis, detectEnvConfigError, EnvNotReadyError } from './scope.js';
 
 /**
  * Choerodon LOV：点搜索图标 → 弹层 → 搜/选行 → 确定（或点行即选）
@@ -29,6 +29,12 @@ export async function pickLov(
       if (!val) throw new Error(`pickLov: 点击 ${openRef} 后 5s 内未出现选择弹层，字段仍为空`);
       return;
     }
+  }
+
+  const envErr = await detectEnvConfigError(dialog);
+  if (envErr) {
+    await ctx.page.keyboard.press('Escape').catch(() => undefined);
+    throw new EnvNotReadyError(`环境不具备：${openRef} 的选择弹层提示「${envErr}」，需在当前环境维护该配置`);
   }
 
   if (args.dialogSpin) {

@@ -62,12 +62,20 @@ export async function openDetailRow(
     const link = loc.nth(i);
     const text = ((await link.textContent().catch(() => '')) ?? '').trim();
     await link.click();
+    // 详情按钮先按默认态渲染（如「编辑」可用），数据回来后才按状态置灰：等请求落定再判断
+    await ctx.page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => undefined);
     const need = ctx.el(requireRef).first();
     const visible = await need
       .waitFor({ state: 'visible', timeout: 15_000 })
       .then(() => true)
       .catch(() => false);
-    if (visible && !(await need.isDisabled().catch(() => true))) {
+    // DEV 实测：networkidle 后「编辑」仍可能先可用、约 2~4s 后才按状态置灰；稳定窗口内任一次禁用即视为禁用
+    let enabled = visible;
+    for (let k = 0; enabled && k < 4; k++) {
+      if (await need.isDisabled().catch(() => true)) enabled = false;
+      else if (k < 3) await ctx.page.waitForTimeout(1_000);
+    }
+    if (enabled) {
       if (i > 0) console.log(`[openDetailRow] 前 ${i} 条记录的 ${requireRef} 不可用，改用第 ${i + 1} 条「${text}」`);
       return;
     }
