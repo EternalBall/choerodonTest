@@ -56,7 +56,7 @@ export async function assertTableEmpty(
 
 function resolveTable(ctx: ActionContext, args: Record<string, unknown>) {
   if (args.table) return ctx.el(String(args.table));
-  return ctx.page.locator('.c7n-pro-table.c7n-pro-table-bordered').first();
+  return ctx.page.locator('.c7n-pro-table').first();
 }
 
 async function inspectTable(table: Locator) {

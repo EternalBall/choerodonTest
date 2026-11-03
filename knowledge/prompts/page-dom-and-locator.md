@@ -193,7 +193,7 @@ elements_draft:
     listTable:
       # 最终给合并器用的 locator def（与现有 LocatorDef 对齐）
       # 若 kit: table，可只写 kit 引用由引擎展开；若引擎不支持，则展开为 css 等
-      css: .c7n-pro-table.c7n-pro-table-bordered   # 仅当来自 kit 原文或探针批准
+      css: .c7n-pro-table   # 仅当来自 kit 原文或探针批准；勿带 -bordered 等主题修饰类
 
 gaps:
   - type: missing_kit|unresolved_custom|ambiguous_multi_instance|dynamic_dom|large_file_truncated

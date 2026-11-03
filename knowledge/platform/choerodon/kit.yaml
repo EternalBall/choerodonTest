@@ -8,8 +8,8 @@ pageReady:
 
 # ---------- Table 壳 / 分页 / 勾选 / 工具栏（见 playbooks/choerodon-table.md）----------
 table:
-  css: .c7n-pro-table.c7n-pro-table-bordered
-  note: 外层是 div.c7n-pro-table，勿再写 ", table"
+  css: .c7n-pro-table
+  note: 外层是 div.c7n-pro-table，勿再写 ", table"；勿带 -bordered/-parity-row/-{size} 等修饰类（由主题 resolvedTheme.table.bordered/striped 与个性化决定，见 choerodon-ui pro/lib/table/Table.js getClassName）；多表时用 .page-content-wrap 或弹窗容器限定
 
 tableWrapper:
   css: .c7n-pro-table-wrapper
@@ -66,6 +66,10 @@ tableSelectionColumn:
 tableRowCheckbox:
   css: .c7n-pro-table-tbody tr.c7n-pro-table-row .c7n-pro-table-selection-column .c7n-pro-checkbox-inner
   note: 多行时 nth 或 within 行
+
+tableRowCheckboxFirst:
+  css: .c7n-pro-table-tbody tr.c7n-pro-table-row:first-child .c7n-pro-table-selection-column .c7n-pro-checkbox-inner
+  note: 第一行勾选框（playbooks/choerodon-table.md 引用）
 
 tableHeaderCheckbox:
   css: .c7n-pro-table thead .c7n-pro-table-selection-column .c7n-pro-checkbox-inner
@@ -133,8 +137,8 @@ successToast:
   text: 成功
 
 detailLink:
-  css: .c7n-pro-table-tbody td a
-  note: 列表行链接；业务层可覆盖为具体 data-index；点击时用 exactText
+  css: .c7n-pro-table-tbody .c7n-pro-table-row .c7n-pro-table-cell a
+  note: 列表行链接；功能层应覆盖为 .c7n-pro-table-cell[data-index="<字段名>"] a（data-index=DataSet 字段名，TableCell.js）；点击时用 exactText
 
 copyBtn:
   role: button
