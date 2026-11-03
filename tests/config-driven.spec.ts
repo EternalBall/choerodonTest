@@ -6,7 +6,7 @@ import { createElResolver } from '../src/keywords/resolveElement.js';
 import { waitReady } from '../src/keywords/waitReady.js';
 import { interpolateDeep } from '../src/keywords/vars.js';
 import { TableNoDataError } from '../src/keywords/tableAssert.js';
-import { collectCaseRefs } from '../src/codegen/suiteRefs.js';
+import { caseUnusableRefs } from '../src/codegen/suiteRefs.js';
 
 // 用例 YAML 中可用 ${ENV.ATA_RUN_ID} / ${vars.xxx}
 // 自动化落库数据统一前缀（便于识别与人工清理）；可用 .env 的 TEST_DATA_PREFIX 覆盖
@@ -37,12 +37,9 @@ if (!caseFile || !fs.existsSync(caseFile)) {
         }
 
         // 先核对元素引用：缺定义的用例不打开页面、不做任何操作，避免跑到一半在 DEV 留下半截数据
-        const missing = collectCaseRefs(c, namespaces).filter((ref) => {
-          const [ns, key] = ref.split('.');
-          return !(elements[ns] && key in elements[ns]);
-        });
+        const missing = caseUnusableRefs(c, elements, namespaces);
         if (missing.length) {
-          throw new Error(`用例不可执行：引用的元素在元素库中没有定义（未执行任何步骤）: ${missing.join(', ')}`);
+          throw new Error(`用例不可执行：引用的元素在元素库中没有定义或无法唯一定位（未执行任何步骤）: ${missing.join(', ')}`);
         }
 
         const ctx: ActionContext = {

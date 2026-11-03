@@ -652,8 +652,28 @@ function bindC7n(ctx: Ctx, n: PrunedNode, region: string | undefined, ev: string
     mk(ctx, n, region, { locator_status: 'unbound' });
     return id;
   }
-  if (tag === 'Tabs' || tag === 'Tabs.TabPane' || tag === 'TabPane') {
-    const key = tag === 'Tabs' ? 'tabsRoot' : 'tabsTab';
+  if (tag === 'Tabs') {
+    mk(ctx, n, region, { locator_key: 'tabsRoot', locator_status: 'bound' });
+    return region;
+  }
+  if (tag === 'Tabs.TabPane' || tag === 'TabPane') {
+    // 页签是多实例组件：裸 kit tabsTab 会命中所有页签，必须带页签文案（tab 属性，裁剪器已把 .d('文案') 解析为字面量）
+    const label = typeof n.props.tab === 'string' && !n.props.tab.startsWith('{') ? n.props.tab : undefined;
+    if (!label) {
+      const node = mk(ctx, n, region, { locator_status: 'unbound' });
+      ctx.gaps.push({
+        type: 'ambiguous_multi_instance',
+        node_id: node.id,
+        detail: `<${tag}> 的 tab 不是字面量文案，无法区分页签实例`,
+        suggested_action: 'probe_dom',
+        cause: 'tab_label_dynamic',
+      });
+      return region;
+    }
+    let i = 1;
+    while (ctx.locators[`tab${i}`] && (ctx.locators[`tab${i}`] as { text?: string }).text !== label) i++;
+    const key = `tab${i}`;
+    addLocator(ctx, key, { kit: 'tabsTab', text: label, evidence: ev, status: 'proposed' } as LocatorDef);
     mk(ctx, n, region, { locator_key: key, locator_status: 'bound' });
     return region;
   }

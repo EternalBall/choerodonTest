@@ -33,15 +33,36 @@ export function collectCaseRefs(c: CaseDef, namespaces: Set<string>): string[] {
 
 export type DanglingRefs = { caseId: string; title: string; missing: string[] };
 
-/** 用例引用了、元素库里却没有定义的元素；空数组表示一致 */
+/**
+ * 一条用例里不可用的元素引用：元素库没有定义，或定义被建库标为 ambiguous（如多实例组件缺实例文案）。
+ * 返回 `ns.key` 或 `ns.key（原因）`；within 链上的不可用元素一并检查。
+ */
+export function caseUnusableRefs(c: CaseDef, lib: ElementLib, namespaces: Set<string>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const check = (ref: string, curNs?: string) => {
+    const full = ref.includes('.') || !curNs ? ref : `${curNs}.${ref}`;
+    if (seen.has(full)) return;
+    seen.add(full);
+    const [ns, key] = full.split('.');
+    const def = lib[ns]?.[key] as Record<string, unknown> | undefined;
+    if (!def) {
+      out.push(full);
+      return;
+    }
+    if (typeof def.ambiguous === 'string') out.push(`${full}（${def.ambiguous}）`);
+    if (typeof def.within === 'string') check(def.within, ns);
+  };
+  for (const ref of collectCaseRefs(c, namespaces)) check(ref);
+  return out;
+}
+
+/** 用例引用了、元素库里却没有定义（或定义不唯一）的元素；空数组表示一致 */
 export function findDanglingRefs(suite: Suite, lib: ElementLib, extraNamespaces: string[] = []): DanglingRefs[] {
   const namespaces = new Set([...Object.keys(lib), ...extraNamespaces]);
   const out: DanglingRefs[] = [];
   for (const c of suite.cases) {
-    const missing = collectCaseRefs(c, namespaces).filter((ref) => {
-      const [ns, key] = ref.split('.');
-      return !(lib[ns] && key in lib[ns]);
-    });
+    const missing = caseUnusableRefs(c, lib, namespaces);
     if (missing.length) out.push({ caseId: c.id, title: c.title, missing });
   }
   return out;

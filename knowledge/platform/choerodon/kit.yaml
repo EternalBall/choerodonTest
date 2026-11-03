@@ -370,6 +370,7 @@ tabsRoot:
 
 tabsTab:
   css: .c7n-tabs-tab
+  note: 多实例——单独使用会命中全部页签（strict mode）。草稿引用 kit tabsTab 时必须带 text（页签文案），建库展开为 role tab + name（choerodon-ui lib/tabs/TabBar.js 渲染 role tab）；缺文案标 ambiguous，执行前拦截
 
 tabsTabActive:
   css: .c7n-tabs-tab-active

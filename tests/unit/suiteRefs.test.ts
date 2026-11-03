@@ -78,3 +78,20 @@ describe('dropSelfReady', () => {
     assert.deepEqual(s.cases[0].steps[1].ready, { visible: 'ns1.saveBtn' });
   });
 });
+
+describe('findDanglingRefs · 定位不唯一', () => {
+  it('ambiguous 定义（含 within 链）按不可用报告并带原因', () => {
+    const lib = {
+      ns1: {
+        pageReady: { css: '.p' },
+        saveBtn: { role: 'button', name: '保存', within: 'box' },
+        box: { css: '.c7n-tabs-tab', ambiguous: '缺实例文案' },
+        dialog: { css: '.d' },
+        toast: { css: '.t' },
+        col: { css: '.c' },
+      },
+    };
+    const d = findDanglingRefs(suite, lib);
+    assert.deepEqual(d, [{ caseId: 'TC_A', title: '保存', missing: ['ns1.box（缺实例文案）'] }]);
+  });
+});

@@ -68,15 +68,74 @@ function stripMeta(map: ElementMap): ElementMap {
  * 命名空间层 = 功能 slug，键并入该功能的元素库；不存在则为空。
  */
 export async function loadLocateDraft(feature: string): Promise<ElementMap[string]> {
+  return (await loadLocateDraftFull(feature)).draft;
+}
+
+type DraftNode = { name?: string; text?: string; locator_key?: string };
+
+/** 草案 + 节点（节点用于给多实例组件取实例文案，如页签名） */
+async function loadLocateDraftFull(feature: string): Promise<{ draft: ElementMap[string]; nodes: DraftNode[] }> {
   try {
     const file = path.join(featureArtifactDir(feature), 'page-locators.yaml');
     const y = YAML.parse(await fs.readFile(file, 'utf8')) as {
       elements_draft?: Record<string, Record<string, unknown>>;
+      pages?: { nodes?: DraftNode[] }[];
     };
-    return (y?.elements_draft?.[featureSlug(feature)] ?? {}) as ElementMap[string];
+    return {
+      draft: (y?.elements_draft?.[featureSlug(feature)] ?? {}) as ElementMap[string],
+      nodes: (y?.pages ?? []).flatMap((p) => p?.nodes ?? []),
+    };
   } catch {
-    return {};
+    return { draft: {}, nodes: [] };
   }
+}
+
+/**
+ * 字段类定位的作用域。生成器统一写 `.page-content <sel>`（可读），建库时改写为：
+ * 有打开的 c7n-pro 弹层（Modal/Drawer，类 c7n-pro-modal-active）时只在弹层内找，否则在页面主体内找。
+ * 依据：c7n-pro Modal 经 Portal 渲染在 .page-content 之外（DEV 实测 LOV/复制弹窗），
+ * 写死 .page-content 会让弹窗里的字段永远找不到。
+ */
+export const ACTIVE_MODAL_CSS = '.c7n-pro-modal-wrapper.c7n-pro-modal-active';
+const PAGE_CONTENT_PREFIX = '.page-content ';
+
+export function inActiveArea(sel: string): string {
+  return `${ACTIVE_MODAL_CSS} ${sel}, body:not(:has(${ACTIVE_MODAL_CSS})) .page-content ${sel}`;
+}
+
+export function scopeFieldCss(css: string): string {
+  if (!css.startsWith(PAGE_CONTENT_PREFIX) || css.includes(',')) return css;
+  return inActiveArea(css.slice(PAGE_CONTENT_PREFIX.length));
+}
+
+/**
+ * 多实例 kit 组件：同一 kit 定义命中页面上所有实例，必须带实例文案才能唯一定位。
+ * 值 = 该组件的 ARIA role（choerodon-ui lib/tabs/TabBar.js 给每个页签渲染 role: 'tab'）。
+ */
+const TEXT_INSTANCE_KITS: Record<string, string> = { tabsTab: 'tab' };
+
+const COMPONENT_SUFFIX = /\s*(页签|标签页|标签|tab)$/i;
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** 多实例 kit 引用 → role+name；拿不到实例文案时标 ambiguous（执行前拦截，不在运行时撞 strict mode） */
+function expandInstanceKit(
+  key: string,
+  kit: string,
+  own: Record<string, unknown>,
+  nodes: DraftNode[],
+): Record<string, unknown> {
+  const role = TEXT_INSTANCE_KITS[kit];
+  const node = nodes.find((n) => n.locator_key === key);
+  const fromNode = node?.text || (node?.name && COMPONENT_SUFFIX.test(node.name) ? node.name.replace(COMPONENT_SUFFIX, '') : undefined);
+  const label = String(own.text ?? own.name ?? fromNode ?? '').trim();
+  const within = own.within ? { within: own.within } : {};
+  if (!label) {
+    return { ...own, ambiguous: `多实例组件 ${kit} 缺少实例文案（定位草稿需补 text）` };
+  }
+  return { role, name: `^\\s*${escapeRe(label)}`, ...within };
 }
 
 /**
@@ -90,9 +149,14 @@ export async function buildFeatureElementLib(
   const overlay = await loadFeatureElementsOverlay(feature);
   const merged: ElementMap = { ...base, ...overlay };
   // 页面 DOM 解析草案：只补充 kit / overlay 没有的 key，不覆盖已有定义
-  for (const [k, def] of Object.entries(await loadLocateDraft(feature))) {
+  const { draft, nodes } = await loadLocateDraftFull(feature);
+  for (const [k, def] of Object.entries(draft)) {
     if (k in merged) continue;
     const { kit, ...own } = def as Record<string, unknown> & { kit?: string };
+    if (kit && TEXT_INSTANCE_KITS[kit]) {
+      merged[k] = expandInstanceKit(k, kit, own, nodes);
+      continue;
+    }
     // kit 引用项展开成平台 kit 的定义（供 within 等引用），自带字段优先
     merged[k] = kit && base[kit] ? { ...base[kit], ...own } : (own as Record<string, unknown>);
   }
@@ -158,6 +222,13 @@ export async function buildFeatureElementLib(
   // 动机——LLM 的 elements_hints 可能带错的 text/css 组合，不应盖掉人工核对过的定位
   for (const [key, def] of Object.entries(overlay)) {
     merged[key] = { ...def };
+  }
+
+  // 字段作用域改写（人工 overlay 不动）
+  for (const [key, def] of Object.entries(merged)) {
+    if (key in overlay || typeof def.css !== 'string') continue;
+    const css = scopeFieldCss(def.css);
+    if (css !== def.css) merged[key] = { ...def, css };
   }
 
   return merged;

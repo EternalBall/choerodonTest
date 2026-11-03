@@ -72,3 +72,4 @@ tabPaneActive:
 | 点 tab 后立刻操作隐藏面板 | 等 inactive 去掉 / 内容 visible |
 | 页面顶栏全局 Tabs 与内容 Tabs 混淆 | within 功能根 / page-content |
 | Collapse 头当 Tab | Collapse 是另一组件 |
+| 页签定位命中多个（strict mode violation，4 个 `.c7n-tabs-tab`） | 草稿 `kit: tabsTab` 没带文案；补 `text: 页签文案`，建库展开为 `role: tab, name: ^文案`（DEV 2026-11-03 数据收集组维护实测） |

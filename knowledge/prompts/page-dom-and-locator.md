@@ -110,6 +110,8 @@ files:
    - `Tabs` → tabs 相关 key（注意 pro / 非 pro 前缀差异）
 2. **同一页多个同类组件**：必须加 scope（`within` / 区域根），禁止逗号并集选择器。
 3. kit 无对应 key → 输出 `gaps[]`，`status: needs_kit`，**不要**编造平台级 css 冒充已确认定位。
+4. 多实例组件（页签 `kit: tabsTab` 等）：每个实例一个 key，**必须**写 `text: <界面文案>`（取 TabPane 的 `tab` 文案），如 `detailTabDataItemInfo: { kit: tabsTab, text: 数据项信息 }`；不写文案会被判定为定位不唯一，用例执行前即拦截。
+5. 字段类 css 统一写 `.page-content <选择器>`；建库时自动改写为「有打开的弹层则在弹层内、否则在页面主体内」，弹窗里的字段不要另写 `.c7n-pro-modal` 前缀。
 
 ### 2.4 自写组件
 
