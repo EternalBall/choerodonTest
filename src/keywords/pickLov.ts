@@ -16,7 +16,7 @@ export async function pickLov(
   await activateCellEditor(ctx, openLoc);
   await clickWithDiagnosis(openLoc, openRef);
 
-  const dialog = resolveDialog(ctx, args);
+  let dialog = resolveDialog(ctx, args);
   // 表格内 LOV 在候选仅 1 条时会直接回填、不弹层：5s 内未出现弹层则视为已自动选中
   const shown = await dialog
     .waitFor({ state: 'visible', timeout: 5_000 })
@@ -33,6 +33,13 @@ export async function pickLov(
     }
   }
 
+  // 钉住本次打开的选择弹层：resolveDialog 是「最后一个可见弹层」，LOV 点行即关后会漂移到下面的抽屉，
+  // 再点「确定」就把抽屉关了（DEV 实测新增数据项抽屉被误关）
+  if (!args.dialog) {
+    const mark = `lov-${Date.now()}`;
+    await dialog.evaluate((el: any, m: string) => el.setAttribute('data-ata-lov', m), mark).catch(() => undefined); // eslint-disable-line @typescript-eslint/no-explicit-any
+    dialog = ctx.page.locator(`[data-ata-lov="${mark}"]`);
+  }
   const envErr = await detectEnvConfigError(dialog);
   if (envErr) {
     await ctx.page.keyboard.press('Escape').catch(() => undefined);
