@@ -51,8 +51,21 @@ export async function clickExpectApi(
   } else if (typeof args.nth === 'number') {
     loc = loc.nth(Number(args.nth));
   }
-  await loc.click();
-  const outcome = await resultPromise;
+  // 点击本身失败（目标不存在 / 被遮挡）要单独报，不能混成「没等到接口」
+  try {
+    await loc.click({ timeout: Number(args.clickTimeout ?? 20_000) });
+  } catch (e) {
+    resultPromise.catch(() => undefined);
+    throw new Error(`点击目标失败（${target}）：${String((e as Error).message).split('\n')[0]}`);
+  }
+  let outcome: Outcome;
+  try {
+    outcome = await resultPromise;
+  } catch (e) {
+    // 没有发出请求时，多半是前端校验拦截：把页面上的校验信息带进报错，便于区分「数据不全」与「接口问题」
+    const hints = await collectValidationHints(ctx.page);
+    throw new Error(`${(e as Error).message}${hints ? `；页面提示：${hints}` : '；页面上没有可见的校验提示'}`);
+  }
 
   if (outcome.kind === 'fail') {
     throw new Error(
@@ -72,6 +85,28 @@ export async function clickExpectApi(
       );
     }
   }
+}
+
+/** 收集可见的表单校验 / 通知文案（仅用于报错诊断） */
+async function collectValidationHints(page: Page): Promise<string> {
+  const texts = await page
+    .locator(
+      '.c7n-pro-validation-message, .c7n-pro-notification-notice, .c7n-notification-notice, .c7n-message-notice, .c7n-pro-message-notice',
+    )
+    .evaluateAll((els) =>
+      els
+        .filter((e) => (e as unknown as { getClientRects(): { length: number } }).getClientRects().length)
+        .map((e) => String((e as unknown as { innerText?: string }).innerText ?? "").trim())
+        .filter(Boolean),
+    )
+    .catch(() => [] as string[]);
+  const invalid = await page
+    .locator('[class*="-invalid"] input[name], [class*="-invalid"] textarea[name]')
+    .evaluateAll((els) => els.map((e) => e.getAttribute('name')).filter(Boolean))
+    .catch(() => [] as (string | null)[]);
+  const parts = [...new Set(texts)].slice(0, 5);
+  if (invalid.length) parts.push(`校验未通过字段: ${[...new Set(invalid)].join(', ')}`);
+  return parts.join(' | ');
 }
 
 type Outcome =

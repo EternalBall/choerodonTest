@@ -11,6 +11,8 @@ export const LocatorSchema = z.object({
   css: z.string().optional(),
   /** 限定在某个元素引用内，如 customer.pickerDialog */
   within: z.string().optional(),
+  /** 多个命中时取哪一个：first / last（如叠放的弹窗取最上层）/ 下标 */
+  nth: z.union([z.literal('first'), z.literal('last'), z.number()]).optional(),
 });
 
 export type LocatorDef = z.infer<typeof LocatorSchema>;

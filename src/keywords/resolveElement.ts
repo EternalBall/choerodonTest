@@ -32,6 +32,16 @@ export function resolveLocator(
     scope = resolveLocator(page, lib, w);
   }
 
+  const loc = baseLocator(scope, def);
+  if (loc && def.nth === 'first') return loc.first();
+  if (loc && def.nth === 'last') return loc.last();
+  if (loc && typeof def.nth === 'number') return loc.nth(def.nth);
+  if (loc) return loc;
+
+  throw new Error(`无效定位定义: ${JSON.stringify(def)}`);
+}
+
+function baseLocator(scope: Page | Locator, def: LocatorDef): Locator | undefined {
   if (def.testId) return scope.getByTestId(def.testId);
   if (def.role) {
     return scope.getByRole(def.role as Parameters<Page['getByRole']>[0], {
@@ -42,8 +52,7 @@ export function resolveLocator(
   if (def.placeholder) return scope.getByPlaceholder(def.placeholder);
   if (def.text) return scope.getByText(def.text, { exact: false });
   if (def.css) return scope.locator(def.css);
-
-  throw new Error(`无效定位定义: ${JSON.stringify(def)}`);
+  return undefined;
 }
 
 export function createElResolver(page: Page, lib: ElementLib) {

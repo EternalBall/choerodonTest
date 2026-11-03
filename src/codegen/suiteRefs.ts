@@ -101,3 +101,37 @@ export function sanitizeGeneratedElements(raw: unknown): SanitizedElements {
 export function formatDangling(list: DanglingRefs[]): string {
   return list.map((d) => `- ${d.caseId}（${d.title}）: ${d.missing.join(', ')}`).join('\n');
 }
+
+const LOCATOR_FIELDS = ['role', 'name', 'testId', 'label', 'placeholder', 'text', 'css', 'within', 'nth'];
+
+function locatorKey(lib: ElementLib, ref: string): string | undefined {
+  const [ns, key] = ref.split('.');
+  const def = lib[ns]?.[key] as Record<string, unknown> | undefined;
+  if (!def) return undefined;
+  return JSON.stringify(LOCATOR_FIELDS.map((f) => def[f] ?? null));
+}
+
+export type SelfReadyFix = { caseId: string; step: string; target: string; ready: string };
+
+/**
+ * 点击后的就绪条件若与被点元素是同一个定位（如点「编辑」后等「编辑」可见），
+ * 对编辑/切换类按钮必然失败（点完按钮就消失）。这类 ready 不提供任何信息，直接去掉并记录。
+ */
+export function dropSelfReady(suite: Suite, lib: ElementLib): SelfReadyFix[] {
+  const fixes: SelfReadyFix[] = [];
+  for (const c of suite.cases) {
+    for (const step of c.steps) {
+      const target = typeof step.args?.target === 'string' ? step.args.target : undefined;
+      const ready = step.ready?.visible;
+      if (!target || !ready || !step.action.startsWith('click')) continue;
+      const a = locatorKey(lib, target);
+      const b = locatorKey(lib, ready);
+      if (a && b && a === b) {
+        fixes.push({ caseId: c.id, step: step.name, target, ready });
+        delete step.ready!.visible;
+        if (!step.ready!.hidden && !step.ready!.response) step.ready = undefined;
+      }
+    }
+  }
+  return fixes;
+}

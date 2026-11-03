@@ -156,23 +156,34 @@ extendAttrBtn:
 # Choerodon Pro Modal / Drawer（同一组件；详见 knowledge/playbooks/choerodon-modal.md）
 # 容器 .c7n-pro-modal-container 常驻；用 .c7n-pro-modal-active 判断打开（勿用 role=dialog）
 
-# 居中 Modal（drawer:false；排除抽屉以免点到侧栏）
+# 当前弹层（居中 Modal 或 Drawer 都算）：源码分析常分不清 Modal.open 是否带 drawer:true
+# （DEV 实测数据收集组「复制」是 drawer），因此 modal* 不再排除抽屉；叠放时取 DOM 最后一个即最上层。
+# 只要居中弹窗时用 centerModal；只要抽屉用 drawer*
 modal:
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active
+  nth: last
+  note: 最上层打开的弹层（Modal/Drawer）；关闭后可能 hidden 或销毁
+
+centerModal:
   css: .c7n-pro-modal-wrapper.c7n-pro-modal-active:not(.c7n-pro-modal-drawer)
-  note: 打开态居中弹层；关闭后可能 hidden 或销毁
+  nth: last
 
 modalTitle:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active:not(.c7n-pro-modal-drawer) .c7n-pro-modal-title
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-title
+  nth: last
 
 modalBody:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active:not(.c7n-pro-modal-drawer) .c7n-pro-modal-body
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-body
+  nth: last
 
 modalConfirm:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active:not(.c7n-pro-modal-drawer) .c7n-pro-modal-footer button.c7n-pro-btn-primary
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-primary
+  nth: last
   note: okText 默认「确定」；也可用 role=button name=确定（限 within modal）
 
 modalCancel:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active:not(.c7n-pro-modal-drawer) .c7n-pro-modal-footer button.c7n-pro-btn-default
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-default
+  nth: last
 
 modalClose:
   css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-header-button
@@ -324,11 +335,12 @@ advancedQueryBtn:
 
 # ---------- 行内更多 Dropdown（见 playbooks/choerodon-row-dropdown.md）----------
 dropdownMenu:
-  css: .c7n-dropdown-menu:not(.c7n-dropdown-menu-hidden)
-  note: 与 filter 的 .c7n-pro-dropdown-popup 区分
+  css: '.c7n-dropdown-menu:not(.c7n-dropdown-menu-hidden), .c7n-pro-dropdown-popup:visible .c7n-menu'
+  nth: last
+  note: 旧版 Dropdown 为 .c7n-dropdown-menu；c7n-pro Dropdown 渲染为 .c7n-pro-dropdown-popup > ul.c7n-menu > li.c7n-menu-item[role=menuitem]（DEV 实测「状态变更」）；两者互斥，取最后打开的
 
 dropdownMenuItem:
-  css: .c7n-dropdown-menu:not(.c7n-dropdown-menu-hidden) .c7n-dropdown-menu-item
+  css: '.c7n-dropdown-menu:not(.c7n-dropdown-menu-hidden) .c7n-dropdown-menu-item, .c7n-pro-dropdown-popup:visible .c7n-menu-item'
 
 rowMoreTrigger:
   role: button

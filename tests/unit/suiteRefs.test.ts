@@ -52,3 +52,29 @@ describe('sanitizeGeneratedElements', () => {
     assert.deepEqual(r.rejected.map((x) => x.key).sort(), ['bad-key', 'badCss', 'badRole', 'noName']);
   });
 });
+
+describe('dropSelfReady', () => {
+  it('点击后等「被点元素自身可见」的 ready 被去掉，其它 ready 保留', async () => {
+    const { dropSelfReady } = await import('../../src/codegen/suiteRefs.js');
+    const lib = {
+      ns1: {
+        editBtn: { role: 'button', name: '编辑' },
+        viewReady: { role: 'button', name: '编辑', note: '详情就绪' },
+        saveBtn: { css: '.save' },
+      },
+    };
+    const s = {
+      suite: 'x',
+      cases: [{
+        id: 'C', title: 't', steps: [
+          { name: '点编辑', action: 'click', args: { target: 'ns1.editBtn' }, ready: { visible: 'ns1.viewReady' }, screenshot: true },
+          { name: '点编辑2', action: 'click', args: { target: 'ns1.editBtn' }, ready: { visible: 'ns1.saveBtn' }, screenshot: true },
+        ],
+      }],
+    } as unknown as Suite;
+    const fixes = dropSelfReady(s, lib);
+    assert.equal(fixes.length, 1);
+    assert.equal(s.cases[0].steps[0].ready, undefined);
+    assert.deepEqual(s.cases[0].steps[1].ready, { visible: 'ns1.saveBtn' });
+  });
+});

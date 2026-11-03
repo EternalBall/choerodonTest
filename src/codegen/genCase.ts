@@ -14,7 +14,7 @@ import type { FeatureArtifact, Suite } from '../core/schema.js';
 import { logger } from '../core/logger.js';
 import { featureSlug } from '../knowledge/featureSlug.js';
 import { llmGenSuite } from './llmGenSuite.js';
-import { findDanglingRefs, formatDangling, type DanglingRefs } from './suiteRefs.js';
+import { dropSelfReady, findDanglingRefs, formatDangling, type DanglingRefs } from './suiteRefs.js';
 
 export type GenPipelineResult = {
   outputSlug: string;
@@ -132,16 +132,20 @@ export async function runGenPipeline(opts: {
   const { buildFeatureElementLib } = await import('../knowledge/platformKit.js');
   const baseLib = await buildFeatureElementLib(artifact.feature, artifact);
   const { suite, elements } = await llmGenSuite({ artifact, baseURL, elementKeys: Object.keys(baseLib) });
-  const caseFile = await writeGeneratedSuite(suite, artifact.feature, outputSlug);
   const elFile = await writeFeatureElementsStub(artifact.feature, artifact, outputSlug, elements.accepted);
 
   const ns = featureOutputSlug(artifact.feature);
   const lib = { [ns]: (YAML.parse(await fs.readFile(elFile, 'utf8')) as Record<string, Record<string, unknown>>)[ns] };
+  const selfReady = dropSelfReady(suite, lib);
+  if (selfReady.length) {
+    logger.warn({ fixes: selfReady }, '已去掉「点击后等被点元素自身可见」的就绪条件（编辑/切换类按钮点完即消失）');
+  }
+  const caseFile = await writeGeneratedSuite(suite, artifact.feature, outputSlug);
   const dangling = findDanglingRefs(suite, lib, [ns]);
   const refCheckFile = path.join(path.dirname(caseFile), 'ref-check.json');
   await fs.writeFile(
     refCheckFile,
-    JSON.stringify({ ok: dangling.length === 0, dangling, rejectedElements: elements.rejected }, null, 2),
+    JSON.stringify({ ok: dangling.length === 0, dangling, rejectedElements: elements.rejected, selfReadyDropped: selfReady }, null, 2),
     'utf8',
   );
   if (dangling.length) {
