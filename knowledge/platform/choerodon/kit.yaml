@@ -3,8 +3,8 @@
 # 生成 elements 时以此为底，功能层只覆盖业务字段
 
 pageReady:
-  css: .hmes-style
-  note: 页面根；勿写 .hmes-style, .c7n-pro-table-wrapper
+  css: .page-content-wrap
+  note: 框架 Content 外层（hzero-front components/Page）；页面骨架挂载即出现，不代表列表数据已加载，数据就绪另用 response/tableSpin 判断；勿写 .hmes-style（仅部分页面手工添加）
 
 # ---------- Table 壳 / 分页 / 勾选 / 工具栏（见 playbooks/choerodon-table.md）----------
 table:
