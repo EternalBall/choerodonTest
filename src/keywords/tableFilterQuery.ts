@@ -28,15 +28,42 @@ export async function tableFilterQuery(
   args: Record<string, unknown>,
 ): Promise<void> {
   const mode = String(args.mode || 'filterBar');
+  // fields 为空 = 不带条件直接查询（只点查询 / 刷新）
   const fields = normalizeFields(args.fields);
-  if (!fields.length) throw new Error('tableFilterQuery 需要 fields');
 
-  if (mode === 'professionalBar') {
+  // mode 只作提示：同一页面不同版本/账号下查询条形态可能不同（filterBar 动态筛选条，
+  // 或 queryBar 自定义表单 + 「查询」按钮），以运行时实际 DOM 为准
+  const kind = await detectQueryBar(ctx.page, mode);
+  if (kind !== (mode === 'professionalBar' ? 'form' : 'filterBar')) {
+    console.log(`[tableFilterQuery] 用例写的是 ${mode}，页面实际是 ${kind === 'form' ? '表单查询条' : 'filterBar'}，按实际执行`);
+  }
+  if (kind === 'form') {
     await queryProfessionalBar(ctx, fields, args);
     return;
   }
 
   await queryFilterBar(ctx, fields, args);
+}
+
+const DYNAMIC_FILTER_BAR = '.c7n-pro-table-dynamic-filter-bar, .c7n-pro-table-filter-menu';
+const QUERY_BUTTON_NAME = /^查\s*询$/;
+
+async function detectQueryBar(page: Page, mode: string): Promise<'filterBar' | 'form'> {
+  const dyn = page.locator(DYNAMIC_FILTER_BAR).first();
+  const form = page.getByRole('button', { name: QUERY_BUTTON_NAME }).first();
+  await dyn.or(form).first().waitFor({ state: 'visible', timeout: 30_000 }).catch(() => undefined);
+  if (await dyn.isVisible().catch(() => false)) return 'filterBar';
+  if (await form.isVisible().catch(() => false)) return 'form';
+  return mode === 'professionalBar' ? 'form' : 'filterBar';
+}
+
+/** 字段是否已在界面上：文本框看 input 本身，Select/Lov 的 input 是隐藏的，要看外层 wrapper */
+function fieldControl(page: Page, name: string) {
+  return page
+    .locator(
+      `input.c7n-pro-input[name="${name}"], .c7n-pro-select-wrapper:has(input[name="${name}"]), .c7n-pro-input-number-wrapper:has(input[name="${name}"])`,
+    )
+    .first();
 }
 
 function normalizeFields(raw: unknown): FilterField[] {
@@ -99,9 +126,12 @@ async function ensureFilterFieldVisible(
     .first()
     .waitFor({ state: 'visible', timeout: 30_000 })
     .catch(() => undefined);
-  const input = page.locator(`input.c7n-pro-input[name="${field.name}"]`).first();
+  const input = fieldControl(page, field.name);
   const already = await input.isVisible().catch(() => false);
   if (already) return;
+  if (!(await page.locator(addFilterSel).first().isVisible().catch(() => false))) {
+    throw new Error(`tableFilterQuery: 筛选条里没有字段 ${field.name}，也没有「添加筛选」入口`);
+  }
 
   await page.locator(addFilterSel).first().click();
   const popup = page.locator(popupSel).first();
@@ -220,6 +250,13 @@ async function queryProfessionalBar(
   args: Record<string, unknown>,
 ): Promise<void> {
   const page = ctx.page;
+  if (args.resetFirst) {
+    const reset = page.getByRole('button', { name: /^重\s*置$/ }).first();
+    if (await reset.isVisible().catch(() => false)) {
+      await reset.click();
+      await page.waitForTimeout(400);
+    }
+  }
   for (const field of fields) {
     const control = resolveControl(field);
     if (control === 'select' || control === 'lov') {
@@ -243,8 +280,8 @@ async function queryProfessionalBar(
     throw new Error(`professionalBar 未找到字段: ${field.name}`);
   }
 
-  const queryName = String(args.queryButtonName || '查询');
-  await page.getByRole('button', { name: queryName }).click();
+  const queryName = args.queryButtonName ? new RegExp(String(args.queryButtonName)) : QUERY_BUTTON_NAME;
+  await page.getByRole('button', { name: queryName }).first().click();
 
   const spin = page.locator('.c7n-spin-spinning, .ant-spin-spinning');
   if ((await spin.count()) > 0) {

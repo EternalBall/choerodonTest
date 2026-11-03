@@ -467,6 +467,12 @@ program
         console.log(`✓ 测试脚本: ${result.caseFile}`);
         if (result.elFile) console.log(`✓ 元素库: ${result.elFile}`);
         console.log(`  cases: ${result.suite.cases.map((c) => c.id).join(', ')}`);
+        if (result.dangling?.length) {
+          console.log(`✗ 元素引用核对: ${result.dangling.length} 条用例引用了未定义元素，执行时会直接判为不可执行（${result.refCheckFile}）`);
+          for (const d of result.dangling) console.log(`    ${d.caseId}: ${d.missing.join(', ')}`);
+        } else if (result.refCheckFile) {
+          console.log(`✓ 元素引用核对通过（${result.refCheckFile}）`);
+        }
         console.log(`  执行: pnpm ata test -c ${result.caseFile}`);
       }
     },

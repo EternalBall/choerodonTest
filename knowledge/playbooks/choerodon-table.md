@@ -129,7 +129,7 @@ paginationSizeChanger:
 tableSelectionColumn:
   css: .c7n-pro-table-selection-column
 tableRowCheckbox:
-  css: .c7n-pro-table-tbody tr.c7n-pro-table-row .c7n-pro-table-selection-column .c7n-pro-checkbox-inner
+  css: .c7n-pro-table-tbody tr.c7n-pro-table-row .c7n-pro-table-selection-column input.c7n-pro-checkbox
   note: 多行时加 nth 或 within 行；表头全选用 thead 内同列
 tableSelectionTips:
   css: .c7n-pro-table-selection-tips
@@ -214,6 +214,10 @@ operations:
 | 侧栏 Tree 当 Table `mode=tree` | 控件不同；树表点行内 expand-icon |
 | 翻页编造新 API | 与列表 read 同一字面量 |
 | Lov 内勾选当业务批量删 | Lov 用 `pickLov` + 确定 |
+| 表格选择器带 `-bordered` / `-parity-row` / `-{size}` | 这些修饰类由主题（resolvedTheme.table.bordered/striped）和个性化决定，换账号/主题就变；只用 `-table/-tbody/-row/-cell` |
+| 按位置找行内链接 `td a` | 用列字段名 `.c7n-pro-table-cell[data-index="<字段名>"] a`（data-index=DataSet 字段名） |
+| 勾选点 `.c7n-pro-checkbox-inner` 图标 | 点 `input.c7n-pro-checkbox`：input 覆盖在图标上，点图标被拦截（DEV 实测） |
+| 查询条形态按源码写死 filterBar | `tableFilterQuery` 运行时识别：有动态筛选条走 filterBar，否则找「查询」按钮走表单；`mode` 只作提示 |
 
 ## 一期可延后
 

@@ -87,3 +87,5 @@ selectTrigger:
 | Lov 当 Select 只点箭头 | 点 `.icon-search` → Modal |
 | 与 filterBar 同名字段冲突 | 限定 `.page-content` / form within |
 | 行内编辑格未激活就点 Select | 先点可编辑格（见 row-edit） |
+| 对 disabled 的 Select 选值（如新建页「状态」默认「新建」且不可改） | `pickSelect` 检测到不可编辑且有值时保留当前值；无值才报错 |
+| 弹窗打开时按 `name` 找字段 | 字段名在页面和弹窗里常重名，`pickSelect`/`fillForm` 按 name 定位时自动限定最上层可见 `.c7n-pro-modal` |

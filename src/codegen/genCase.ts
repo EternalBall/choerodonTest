@@ -14,6 +14,7 @@ import type { FeatureArtifact, Suite } from '../core/schema.js';
 import { logger } from '../core/logger.js';
 import { featureSlug } from '../knowledge/featureSlug.js';
 import { llmGenSuite } from './llmGenSuite.js';
+import { findDanglingRefs, formatDangling, type DanglingRefs } from './suiteRefs.js';
 
 export type GenPipelineResult = {
   outputSlug: string;
@@ -23,6 +24,10 @@ export type GenPipelineResult = {
   caseFile?: string;
   elFile?: string;
   suite?: Suite;
+  /** 用例引用了但元素库没有的元素；非空表示这些用例不可执行 */
+  dangling?: DanglingRefs[];
+  /** 引用检查报告文件 */
+  refCheckFile?: string;
 };
 
 /**
@@ -33,7 +38,9 @@ export async function featureToSuite(
   artifact: FeatureArtifact,
   baseURL?: string,
 ): Promise<Suite> {
-  return llmGenSuite({ artifact, baseURL });
+  const { buildFeatureElementLib } = await import('../knowledge/platformKit.js');
+  const lib = await buildFeatureElementLib(artifact.feature, artifact);
+  return (await llmGenSuite({ artifact, baseURL, elementKeys: Object.keys(lib) })).suite;
 }
 
 export async function writeGeneratedSuite(
@@ -53,16 +60,27 @@ export async function writeFeatureElementsStub(
   artifact?: FeatureArtifact,
   /** 落盘目录 slug；默认与 feature 名一致 */
   outputSlug?: string,
+  /** 生成用例时模型声明的元素：只补元素库没有的 key，不覆盖 kit / 人工 / 探针定义 */
+  generated?: Record<string, Record<string, unknown>>,
 ): Promise<string> {
   const ns = featureOutputSlug(feature);
   const { buildFeatureElementLib } = await import('../knowledge/platformKit.js');
   const merged = await buildFeatureElementLib(feature, artifact);
+  const addedFromGen: string[] = [];
+  for (const [k, def] of Object.entries(generated ?? {})) {
+    if (k in merged) continue;
+    merged[k] = def;
+    addedFromGen.push(k);
+  }
 
   const stub: Record<string, Record<string, unknown>> = { [ns]: merged };
   const file = featureElementsFile(outputSlug ?? feature);
   const header =
     `# generated from knowledge/platform + knowledge/features — do not hand-edit as source of truth\n` +
-    `# curated overrides: knowledge/features/${featureSlug(feature)}/elements.yaml\n`;
+    `# curated overrides: knowledge/features/${featureSlug(feature)}/elements.yaml\n` +
+    (addedFromGen.length
+      ? `# 由用例生成时声明（仅界面语义定位，未经探针校准）: ${addedFromGen.join(', ')}\n`
+      : '');
   await fs.mkdir(path.dirname(file), { recursive: true });
   const body = YAML.stringify(stub);
   await fs.writeFile(file, header + body, 'utf8');
@@ -109,11 +127,33 @@ export async function runGenPipeline(opts: {
     return { outputSlug, artifact, artifactFile };
   }
 
-  const suite = await featureToSuite(artifact, baseURL);
+  // 元素库与用例必须来自同一次生成：先建元素库，把可用 key 交给模型；
+  // 模型补充声明的元素写回同一份元素库，最后逐条核对引用
+  const { buildFeatureElementLib } = await import('../knowledge/platformKit.js');
+  const baseLib = await buildFeatureElementLib(artifact.feature, artifact);
+  const { suite, elements } = await llmGenSuite({ artifact, baseURL, elementKeys: Object.keys(baseLib) });
   const caseFile = await writeGeneratedSuite(suite, artifact.feature, outputSlug);
-  const elFile = await writeFeatureElementsStub(artifact.feature, artifact, outputSlug);
+  const elFile = await writeFeatureElementsStub(artifact.feature, artifact, outputSlug, elements.accepted);
 
-  return { outputSlug, artifact, artifactFile, caseFile, elFile, suite };
+  const ns = featureOutputSlug(artifact.feature);
+  const lib = { [ns]: (YAML.parse(await fs.readFile(elFile, 'utf8')) as Record<string, Record<string, unknown>>)[ns] };
+  const dangling = findDanglingRefs(suite, lib, [ns]);
+  const refCheckFile = path.join(path.dirname(caseFile), 'ref-check.json');
+  await fs.writeFile(
+    refCheckFile,
+    JSON.stringify({ ok: dangling.length === 0, dangling, rejectedElements: elements.rejected }, null, 2),
+    'utf8',
+  );
+  if (dangling.length) {
+    logger.warn(
+      { refCheckFile, cases: dangling.length },
+      `用例引用了元素库中不存在的定义，这些用例执行时会直接判为不可执行：\n${formatDangling(dangling)}`,
+    );
+  } else {
+    logger.info({ refCheckFile }, '用例元素引用核对通过');
+  }
+
+  return { outputSlug, artifact, artifactFile, caseFile, elFile, suite, dangling, refCheckFile };
 }
 
 /** 源码 → 分析元操作（不写盘，由 runGenPipeline 统一落盘） */

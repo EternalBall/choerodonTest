@@ -10,6 +10,7 @@ import {
   type Suite,
 } from '../core/schema.js';
 import { listActions } from '../keywords/index.js';
+import { sanitizeGeneratedElements, type SanitizedElements } from './suiteRefs.js';
 import {
   formatPlaybooksForPrompt,
   loadPlaybooksByIds,
@@ -73,7 +74,12 @@ const SUITE_JSON_HINT = `{
         }
       ]
     }
-  ]
+  ],
+  "elements": {
+    "fieldTypeTab": { "role": "tab", "name": "字段类型" },
+    "copyModal": { "role": "dialog", "name": "复制" },
+    "copyConfirmBtn": { "role": "button", "name": "确定", "within": "copyModal" }
+  }
 }`;
 
 function buildSystemPrompt(allowedActions: string[], ns: string): string {
@@ -86,7 +92,10 @@ function buildSystemPrompt(allowedActions: string[], ns: string): string {
 4. 每个 step：name、action、args；可选 ready / assert / screenshot
 5. action 只能是下列关键字之一：
    ${allowedActions.join(' | ')}
-6. 元素引用使用命名空间前缀（如 ${ns}.pageReady / ${ns}.saveBtn），与 elements 库 key 对齐；禁止编造未声明的 CSS 选择器作为 target
+6. 元素引用使用命名空间前缀（如 ${ns}.pageReady / ${ns}.saveBtn）。**每个引用的 key 必须满足其一**：
+   (a) 出现在输入的【可用元素 key】列表中；
+   (b) 在输出 JSON 顶层 "elements" 对象里由你声明。声明只能用界面可见语义：{ "role", "name" }（role 取 button/tab/link/menuitem/checkbox/dialog/option 等 ARIA 角色，name 取界面文案——meta_op.element 形如 "文件|组件|文案|..."，第三段即文案）、{ "text" }、{ "label" }、{ "placeholder" }，可加 "within" 指向另一个 key；**禁止写 css**。
+   列表里已有的 key 不要重新声明；引用了却既不在列表也没声明的用例会被判为不可执行
 7. 改数据步骤优先用 clickExpectApi，urlIncludes / successUrlIncludes 必须来自输入中的 operation.api / apis[] 字面量片段，禁止猜测 REST 路径
 8. 每个 operation（或每条 flow）至少对应一条 case；case.id 形如 TC_{NS}_{OP_ID}，OP_ID 用 operation.id / flow.id 大写蛇形
 9. 查询类用 tableFilterQuery（filterBar）；进详情用 openDetailRow；Lov 用 pickLov；Select/快码用 pickSelect；填表用 fill / fillForm
@@ -245,11 +254,15 @@ async function saveGenRaw(feature: string, text: string): Promise<void> {
  * artifacts feature.yaml（路径描述 / 元操作）→ LLM → 可执行 Suite。
  * 失败直接抛错，不回退规则编译。
  */
+export type GeneratedSuite = { suite: Suite; elements: SanitizedElements };
+
 export async function llmGenSuite(opts: {
   artifact: FeatureArtifact;
   baseURL?: string;
-}): Promise<Suite> {
-  const { artifact, baseURL } = opts;
+  /** 元素库里已有的 key（kit + 人工覆盖 + 页面草案 + 字段规则），作为可引用清单喂给模型 */
+  elementKeys?: string[];
+}): Promise<GeneratedSuite> {
+  const { artifact, baseURL, elementKeys = [] } = opts;
   const ns = featureOutputSlug(artifact.feature);
   const allowed = listActions();
   // 沿用 analyze 选定的手册；历史 artifact 无记录时按 fallback 规则选
@@ -288,6 +301,9 @@ export async function llmGenSuite(opts: {
         content: [
           `功能: ${artifact.feature}`,
           `元素命名空间 ns=${ns}（target 请用 ${ns}.xxx）`,
+          elementKeys.length
+            ? `【可用元素 key】（引用时加 ${ns}. 前缀；不在此列的须在输出 elements 中声明）\n${elementKeys.join(', ')}`
+            : '',
           playbookBlock,
           '【输入：artifacts 路径描述 / 元操作】',
           artifactBlock,
@@ -313,6 +329,10 @@ export async function llmGenSuite(opts: {
   }
 
   const suite = normalizeSuiteJson(json, artifact, baseURL);
+  const elements = sanitizeGeneratedElements((json as Record<string, unknown> | null)?.elements);
+  if (elements.rejected.length) {
+    logger.warn({ rejected: elements.rejected }, '模型声明的元素有不合规项，已丢弃');
+  }
   logger.info(
     {
       feature: artifact.feature,
@@ -321,5 +341,5 @@ export async function llmGenSuite(opts: {
     },
     'LLM 生成 suite 完成',
   );
-  return suite;
+  return { suite, elements };
 }

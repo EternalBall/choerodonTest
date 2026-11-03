@@ -10,6 +10,7 @@ import { clickExpectApi } from './clickExpectApi.js';
 import { assertTableEmpty, assertTableHasRows } from './tableAssert.js';
 import { openDetailRow } from './openDetailRow.js';
 import type { VarMap } from './vars.js';
+import { activeScope, dismissGlobalPrompt, readonlyValue } from './scope.js';
 
 type El = ReturnType<typeof createElResolver>;
 type AssertDef = z.infer<typeof AssertSchema>;
@@ -35,6 +36,8 @@ export const actions: Record<string, ActionHandler> = {
     const waitUntil = (args.waitUntil as 'domcontentloaded' | 'load' | 'networkidle' | 'commit') || 'domcontentloaded';
     await ctx.page.goto(pathOrUrl, { waitUntil });
     await waitReady(ctx.page, ctx.el, args.ready as ReadySpec | undefined);
+    // 账号未验证邮箱/手机时主框架会弹「验证提示」并拦截整页点击，进入页面后先关掉
+    if (await dismissGlobalPrompt(ctx.page)) console.log('[goto] 已关闭主框架验证提示弹窗');
   },
 
   async click(ctx, args) {
@@ -93,7 +96,9 @@ export const actions: Record<string, ActionHandler> = {
         if (control === 'switch') {
           // c7n Switch：input 本体不可填，点外层 label 切换；value 为 Y/true/1 视为开启
           const want = /^(y|true|1)$/i.test(String(o.value ?? 'Y'));
-          const input = target ? ctx.el(target) : ctx.page.locator(`input[name="${name}"]`).first();
+          const input = target
+            ? ctx.el(target)
+            : (await activeScope(ctx.page)).locator(`input[name="${name}"]`).first();
           if ((await input.isChecked()) !== want) {
             // input 自身带 class c7n-pro-switch（且不可点），实际可点的是外层 label
             const wrapper = input.locator('xpath=ancestor::label[1]');
@@ -114,12 +119,24 @@ export const actions: Record<string, ActionHandler> = {
         }
         const value = o.value != null ? String(o.value) : '';
         if (!value) throw new Error(`fillForm 文本字段 ${name || target} 需要 value`);
-        if (target) await ctx.el(target).fill(value);
+        let input: Locator;
+        if (target) input = ctx.el(target);
         else if (name) {
-          await ctx.page.locator(`input[name="${name}"]`).first().fill(value);
+          // 按字段名定位时限定在最上层弹窗内（弹窗外常有同名且禁用的字段）
+          input = (await activeScope(ctx.page)).locator(`input[name="${name}"], textarea[name="${name}"]`).first();
         } else {
           throw new Error('fillForm 字段需要 name 或 target');
         }
+        const fixed = await readonlyValue(input);
+        if (fixed !== null) {
+          // 编辑态下的主键类字段（如编码）通常不可改：有值则保留，无值说明页面状态不对
+          if (fixed) {
+            console.log(`[fillForm] ${name || target} 不可编辑，保留当前值「${fixed}」`);
+            continue;
+          }
+          throw new Error(`fillForm: 字段 ${name || target} 不可编辑且无值`);
+        }
+        await input.fill(value);
       }
       return;
     }

@@ -64,15 +64,15 @@ tableSelectionColumn:
   note: selectionMode=rowbox 等；表头=全选，tbody=行勾选
 
 tableRowCheckbox:
-  css: .c7n-pro-table-tbody tr.c7n-pro-table-row .c7n-pro-table-selection-column .c7n-pro-checkbox-inner
-  note: 多行时 nth 或 within 行
+  css: .c7n-pro-table-tbody tr.c7n-pro-table-row .c7n-pro-table-selection-column input.c7n-pro-checkbox
+  note: 多行时 nth 或 within 行；点 input 本体——它覆盖在 .c7n-pro-checkbox-inner 图标上，点图标会被 input 拦截（DEV 实测）
 
 tableRowCheckboxFirst:
-  css: .c7n-pro-table-tbody tr.c7n-pro-table-row:first-child .c7n-pro-table-selection-column .c7n-pro-checkbox-inner
+  css: .c7n-pro-table-tbody tr.c7n-pro-table-row:first-child .c7n-pro-table-selection-column input.c7n-pro-checkbox
   note: 第一行勾选框（playbooks/choerodon-table.md 引用）
 
 tableHeaderCheckbox:
-  css: .c7n-pro-table thead .c7n-pro-table-selection-column .c7n-pro-checkbox-inner
+  css: .c7n-pro-table thead .c7n-pro-table-selection-column input.c7n-pro-checkbox
   note: 全选当前页
 
 tableSelectionTips:
