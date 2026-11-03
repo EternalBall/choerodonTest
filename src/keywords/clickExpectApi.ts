@@ -1,4 +1,4 @@
-import { clickWithDiagnosis } from './scope.js';
+import { clickWithDiagnosis, DataNotReadyError } from './scope.js';
 import type { Page, Response } from '@playwright/test';
 import type { ActionContext } from './index.js';
 
@@ -68,6 +68,10 @@ export async function clickExpectApi(
     throw new Error(`${(e as Error).message}${hints ? `；页面提示：${hints}` : '；页面上没有可见的校验提示'}`);
   }
 
+  // 唯一约束冲突（如 MT_UK_..._U1、「已存在」）：同组合的数据已在环境里，属数据冲突而非功能失败
+  if (outcome.kind === 'fail' && /(_UK_|_U\d\b|已存在|duplicate key|unique constraint)/i.test(outcome.message ?? '')) {
+    throw new DataNotReadyError(`数据冲突：保存被唯一约束拦截（${String(outcome.message).split('\n')[0]}），同样的数据已存在，需换一条测试数据或先清理`);
+  }
   if (outcome.kind === 'fail') {
     throw new Error(
       `接口失败 status=${outcome.status} url=${outcome.url}\n${outcome.message || '(无响应体)'}`,

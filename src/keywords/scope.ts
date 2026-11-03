@@ -62,7 +62,36 @@ export async function narrowToActive(loc: Locator): Promise<Locator> {
       .catch(() => false);
     if (!inactive) keep.push(i);
   }
-  return keep.length === 1 ? loc.nth(keep[0]) : loc;
+  if (keep.length === 1) return loc.nth(keep[0]);
+  if (keep.length === 0) return loc;
+  // 有可见弹层时优先弹层里的（如抽屉表格与页面表格都有同样的行删除按钮）
+  const info = await Promise.all(
+    keep.map((i) =>
+      loc
+        .nth(i)
+        .evaluate((node: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+          const doc = node.ownerDocument;
+          const modals = Array.from(doc.querySelectorAll('.c7n-pro-modal') as ArrayLike<any>).filter((m: any) => m.offsetWidth || m.offsetHeight);
+          const top: any = modals[modals.length - 1];
+          const table = node.closest('.c7n-pro-table');
+          return {
+            inTopModal: !!top && top.contains(node),
+            tableId: table ? Array.from(doc.querySelectorAll('.c7n-pro-table') as ArrayLike<any>).indexOf(table) : -1,
+            fixedLeft: !!node.closest('[class*="-fixed-left"], [class*="-fixed-leftLast"]'),
+          };
+        })
+        .catch(() => ({ inTopModal: false, tableId: -1, fixedLeft: false })),
+    ),
+  );
+  let cand = keep.map((i, k) => ({ i, ...info[k] }));
+  if (cand.some((c) => c.inTopModal)) cand = cand.filter((c) => c.inTopModal);
+  if (cand.length === 1) return loc.nth(cand[0].i);
+  // 同一张表的锁定列（lock: left）会在固定区与主体各渲染一份：取固定区那份（覆盖在上面、可点）
+  if (cand.every((c) => c.tableId === cand[0].tableId && c.tableId >= 0)) {
+    const fixed = cand.filter((c) => c.fixedLeft);
+    if (fixed.length === 1) return loc.nth(fixed[0].i);
+  }
+  return loc;
 }
 
 export async function clickWithDiagnosis(loc: Locator, target: string, timeout = 20_000): Promise<void> {

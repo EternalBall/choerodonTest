@@ -55,15 +55,18 @@ export async function assertTableEmpty(
 }
 
 function resolveTable(ctx: ActionContext, args: Record<string, unknown>) {
-  if (args.table) return ctx.el(String(args.table));
+  // 用例里常写 target（与其他关键字一致），旧写法 table 兼容
+  const ref = args.table ?? args.target;
+  if (ref) return ctx.el(String(ref)).first();
   return ctx.page.locator('.c7n-pro-table').first();
 }
 
 async function inspectTable(table: Locator) {
+  // 只认表体里的空态：不能用 [class*="empty"]——表头行内筛选输入框带 c7n-pro-input-empty（DEV 实测误判 0 行）
   const empty = table.locator(
-    '.c7n-pro-empty, .c7n-empty, .c7n-pro-table-empty-row, [class*="empty"]',
+    '.c7n-pro-table-tbody .c7n-pro-table-empty-row, .c7n-pro-table-tbody .c7n-pro-empty, .c7n-pro-table-tbody .c7n-empty, tbody .c7n-pro-table-empty-row',
   );
-  const emptyText = table.getByText('暂无数据', { exact: false });
+  const emptyText = table.locator('.c7n-pro-table-tbody, tbody').getByText('暂无数据', { exact: false });
   const emptyVisible =
     (await empty.first().isVisible().catch(() => false)) ||
     (await emptyText.first().isVisible().catch(() => false));
