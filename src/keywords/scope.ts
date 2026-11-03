@@ -36,8 +36,9 @@ export async function dismissGlobalPrompt(page: Page, waitMs = 1_500): Promise<b
 
 /** 控件不可编辑（disabled / readonly 且无弹出能力）时返回其当前值；可编辑返回 null */
 export async function readonlyValue(input: Locator): Promise<string | null> {
-  const disabled = await input.isDisabled().catch(() => false);
-  if (!disabled) return null;
+  // isEditable 同时覆盖 disabled 与 readonly（c7n 由其他字段带出的字段可能只读而非禁用）
+  const editable = await input.isEditable({ timeout: 5_000 }).catch(() => true);
+  if (editable) return null;
   return (await input.inputValue().catch(() => '')) ?? '';
 }
 
