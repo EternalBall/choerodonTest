@@ -33,3 +33,14 @@ describe('operationCards', () => {
     assert.doesNotMatch(md, /要点：.*\[n2\]/);
   });
 });
+
+import { scopeFieldCss } from '../../src/knowledge/platformKit.js';
+describe('表头控件作用域', () => {
+  it('thead 控件限定到 .page-content 内激活页签，并兼容弹层与无页签', () => {
+    const css = scopeFieldCss('.c7n-pro-table thead button:has(.icon-add)');
+    assert.match(css, /^\.c7n-pro-modal-wrapper:visible \.c7n-pro-table thead/);
+    assert.match(css, /\.page-content \.c7n-tabs-tabpane-active \.c7n-pro-table thead/);
+    assert.match(css, /:not\(:has\(\.page-content \.c7n-tabs-tabpane-active\)\) \.page-content \.c7n-pro-table thead/);
+  });
+});
+

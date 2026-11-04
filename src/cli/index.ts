@@ -715,8 +715,11 @@ program
       feature: artifact.feature,
       slug,
       cases: suite.cases,
-      lib: gen[slug] ?? {},
+      // 用最新 kit/overlay 重新建库（kit 修正立即生效），generated.yaml 只补用例生成时声明的键
+      lib: { ...(gen[slug] ?? {}), ...(await (await import('../knowledge/platformKit.js')).buildFeatureElementLib(artifact.feature, artifact)) },
       fieldRules: artifact.field_rules as never,
+      fieldFacts: artifact.field_facts as never,
+      pages: artifact.pages as never,
       apis: artifact.apis as string[] | undefined,
       notes,
       routeReport,

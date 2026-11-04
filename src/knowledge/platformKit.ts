@@ -105,8 +105,27 @@ export function inActiveArea(sel: string): string {
   return `${ACTIVE_MODAL_CSS} ${sel}, body:not(:has(${ACTIVE_MODAL_CSS})) .page-content ${sel}`;
 }
 
+/**
+ * 页签内控件（如各页签表头的「+」）：有可见弹层时在弹层内找；否则限定在 .page-content 内的激活页签。
+ * 必须带 .page-content：HZERO 外层工作台多页签同样渲染为 c7n-tabs 且带 tabpane-active（DEV 2026-11-04 实测命中 2 个）。
+ * 页面无页签时退回 .page-content。
+ */
+const ACTIVE_TAB_PANE = '.page-content .c7n-tabs-tabpane-active';
+export function inActiveTabArea(sel: string): string {
+  return [
+    `${ACTIVE_MODAL_CSS} ${sel}`,
+    `body:not(:has(${ACTIVE_MODAL_CSS})) ${ACTIVE_TAB_PANE} ${sel}`,
+    `body:not(:has(${ACTIVE_MODAL_CSS})):not(:has(${ACTIVE_TAB_PANE})) .page-content ${sel}`,
+  ].join(', ');
+}
+
+const THEAD_PREFIX = '.c7n-pro-table thead ';
+
 export function scopeFieldCss(css: string): string {
-  if (!css.startsWith(PAGE_CONTENT_PREFIX) || css.includes(',')) return css;
+  if (css.includes(',')) return css;
+  // 表头控件（各页签表头「+」等）：页签各有一张表，限定到激活页签（运行时作用域，绕过建库前的并集闸门）
+  if (css.startsWith(THEAD_PREFIX)) return inActiveTabArea(css);
+  if (!css.startsWith(PAGE_CONTENT_PREFIX)) return css;
   return inActiveArea(css.slice(PAGE_CONTENT_PREFIX.length));
 }
 
@@ -229,6 +248,14 @@ export async function buildFeatureElementLib(
   // 字段作用域改写（人工 overlay 不动）
   for (const [key, def] of Object.entries(merged)) {
     if (key in overlay || typeof def.css !== 'string') continue;
+    // 已用 within 限定容器的表头控件由容器决定范围；容器只是裸表格（.c7n-pro-table，按页签重复）时等于没限定，去掉 within 改套页签作用域
+    if (def.within && def.css.startsWith(THEAD_PREFIX)) {
+      const w = String(def.within).split('.').pop()!;
+      if (merged[w]?.css !== '.c7n-pro-table') continue;
+      const { within: _w, ...rest } = def;
+      merged[key] = { ...rest, css: inActiveTabArea(def.css) };
+      continue;
+    }
     const css = scopeFieldCss(def.css);
     if (css !== def.css) merged[key] = { ...def, css };
   }

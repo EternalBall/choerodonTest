@@ -154,73 +154,73 @@ extendAttrBtn:
   name: 扩展属性
 
 # Choerodon Pro Modal / Drawer（同一组件；详见 knowledge/playbooks/choerodon-modal.md）
-# 容器 .c7n-pro-modal-container 常驻；用 .c7n-pro-modal-active 判断打开（勿用 role=dialog）
+# 容器 .c7n-pro-modal-container 常驻；用 :visible 判断打开（勿用 role=dialog；c7n-pro-modal-active 只标在最上层带遮罩的弹层，ModalContainer.js:605）；叠层时取 last
 
 # 当前弹层（居中 Modal 或 Drawer 都算）：源码分析常分不清 Modal.open 是否带 drawer:true
 # （DEV 实测数据收集组「复制」是 drawer），因此 modal* 不再排除抽屉；叠放时取 DOM 最后一个即最上层。
 # 只要居中弹窗时用 centerModal；只要抽屉用 drawer*
 modal:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active
+  css: .c7n-pro-modal-wrapper:visible
   nth: last
   note: 最上层打开的弹层（Modal/Drawer）；关闭后可能 hidden 或销毁
 
 centerModal:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active:not(.c7n-pro-modal-drawer)
+  css: .c7n-pro-modal-wrapper:not(.c7n-pro-modal-drawer):visible
   nth: last
 
 modalTitle:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-title
+  css: .c7n-pro-modal-wrapper:visible .c7n-pro-modal-title
   nth: last
 
 modalBody:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-body
+  css: .c7n-pro-modal-wrapper:visible .c7n-pro-modal-body
   nth: last
 
 modalConfirm:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-primary
+  css: .c7n-pro-modal-wrapper:visible .c7n-pro-modal-footer button.c7n-pro-btn-primary
   nth: last
-  note: okText 默认「确定」；也可用 role=button name=确定（限 within modal）
+  note: okText 默认「确定」；footer 可能有多个 primary（如「取消/保存并继续新建/确定」），优先按文字「确定」点，last 只是兜底
 
 modalCancel:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-default
+  css: .c7n-pro-modal-wrapper:visible .c7n-pro-modal-footer button.c7n-pro-btn-default
   nth: last
 
 modalClose:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-header-button
+  css: .c7n-pro-modal-wrapper:visible .c7n-pro-modal-header-button
   note: 需 closable:true；居中/抽屉共用
 
 # Drawer（drawer:true）
 drawer:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer.c7n-pro-modal-active
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer:visible
   note: 未打开时仅有 modal-container + mask[hidden]
 
 drawerTitle:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer.c7n-pro-modal-active .c7n-pro-modal-title
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer:visible .c7n-pro-modal-title
 
 drawerBody:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer.c7n-pro-modal-active .c7n-pro-modal-body
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer:visible .c7n-pro-modal-body
 
 drawerConfirm:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-primary
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer:visible .c7n-pro-modal-footer button.c7n-pro-btn-primary
 
 drawerCancel:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-default
+  css: .c7n-pro-modal-wrapper.c7n-pro-modal-drawer:visible .c7n-pro-modal-footer button.c7n-pro-btn-default
 
 copyDrawer:
-  css: '.c7n-pro-modal-wrapper.c7n-pro-modal-drawer.c7n-pro-modal-active:has(.c7n-pro-modal-title:text-is("复制"))'
+  css: '.c7n-pro-modal-wrapper.c7n-pro-modal-drawer:visible:has(.c7n-pro-modal-title:text-is("复制"))'
   note: 功能层可覆盖标题；字段用 input[name]
 
 # Modal.confirm / info / success / error / warning
 confirmModal:
-  css: .c7n-pro-modal-wrapper.c7n-pro-confirm-wrapper.c7n-pro-modal-active
+  css: .c7n-pro-modal-wrapper.c7n-pro-confirm-wrapper:visible
   note: 与业务表单 Modal、Popconfirm（.c7n-popover）区分
 
 confirmModalOk:
-  css: .c7n-pro-modal-wrapper.c7n-pro-confirm-wrapper.c7n-pro-modal-active .c7n-pro-modal-footer button.c7n-pro-btn-primary
+  css: .c7n-pro-modal-wrapper.c7n-pro-confirm-wrapper:visible .c7n-pro-modal-footer button.c7n-pro-btn-primary
 
 # ---------- Lov（见 playbooks/choerodon-lov.md）----------
 lovDialog:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active
+  css: .c7n-pro-modal-wrapper:visible
   note: 默认 viewMode=modal/drawer；打开态；禁止逗号并集；功能层可再收窄
 
 lovConfirm:
@@ -242,7 +242,7 @@ lovOpen:
 
 tableAddLineBtn:
   css: .c7n-pro-table thead button:has(.icon-add)
-  note: 表头加号；若 within 已指向某表，改用相对选择器 thead button:has(.icon-add)
+  note: 表头加号；页面有页签时每个页签各有一个，建库时由 platformKit.scopeFieldCss 改写为 inActiveTabArea，限定在 .page-content 内的激活页签（外层工作台页签也带 tabpane-active，必须带 .page-content 前缀；2026-11-04 实测）；若 within 已指向某表，改用相对选择器 thead button:has(.icon-add)
 
 tableRemoveLineBtn:
   css: .c7n-pro-table-tbody tr.c7n-pro-table-row button:has(.icon-remove)
@@ -464,7 +464,7 @@ intlFieldIcon:
   note: 多语言入口，点击打开 Modal；须 within 字段 wrapper
 
 intlFieldLangInput:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active .c7n-pro-modal-body input.c7n-pro-input
+  css: .c7n-pro-modal-wrapper:visible .c7n-pro-modal-body input.c7n-pro-input
   note: 多语言弹窗内语言行；多行时为 textarea.c7n-pro-textarea；功能层按 name 收窄（tlsKey 待核实）
 
 secretFieldWrapper:
@@ -484,7 +484,7 @@ secretFieldViewBtn:
   note: 只读未查看入口；within 字段 wrapper
 
 secretFieldModal:
-  css: .c7n-pro-modal-wrapper.c7n-pro-modal-active:has(.c7n-pro-secret-field-modal)
+  css: .c7n-pro-modal-wrapper:visible:has(.c7n-pro-secret-field-modal)
   note: 脱敏验证/编辑弹窗；footer 为 null，按钮在表单内
 
 secretFieldModalForm:
