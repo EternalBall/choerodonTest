@@ -1,0 +1,45 @@
+# c7n / choerodon-ui 交互要点（平台级，与具体功能无关）
+# 用途：生成「操作卡」时附给自主测试 agent，减少摸索步数。只写「怎么操作/怎么观察」，不写任何功能的预期结果。
+# 每条须有出处：组件源码位置或实测记录；新增时同样补 source。
+# applies 为空表示总是附上；否则按动作名（suite 的 action）或控件类型匹配。
+notes:
+  - id: modal-visible
+    applies: []
+    note: 判断当前弹层用「可见的 .c7n-pro-modal-wrapper」；c7n-pro-modal-active 只加在最上层带遮罩的弹层上，抽屉叠弹窗时会判错。
+    source: choerodon-ui/pro ModalContainer.js:605；2026-11-04 实测
+  - id: lov-modal-stack
+    applies: [pickLov]
+    note: LOV 选择弹窗关闭后，最上层变回下面的抽屉；点「确定」前先确认当前弹层标题，别误点抽屉的确定。
+    source: 2026-11-04 实测（LOV 弹层漂移误关抽屉）
+  - id: inline-lov-activate
+    applies: [pickLov]
+    note: 表格行内编辑的 LOV/下拉要先点一下单元格激活编辑器，输入框才出现。
+    source: 2026-11-04 实测
+  - id: tab-role
+    applies: []
+    note: 页签渲染为 role=tab，可按页签名称定位；多个页签各有自己的表格工具栏，按钮定位要限定在当前页签面板内。
+    source: choerodon-ui TabBar.js:222
+  - id: lock-column-dup
+    applies: [selectTableRow, openDetailRow, assertTableHasRows]
+    note: 左锁定列会渲染两份（锁定层 + 主体），同一行的勾选框/链接可能命中两个；取可见且可交互的那个。
+    source: 2026-11-04 实测
+  - id: required-empty
+    applies: [fillForm]
+    note: 必填但为空的字段 wrapper 同时带 -required 与 -empty 类，可在保存前扫一遍补齐，比只按分析出的必填清单更可靠。
+    source: choerodon-ui/pro FormField 类名；2026-11-04 实测
+  - id: edit-btn-delay
+    applies: [click, openDetailRow]
+    note: 详情页按钮（如「编辑」）在数据加载后 2~4 秒才按状态置灰；判断按钮可用性前先等状态稳定。
+    source: 2026-11-04 实测
+  - id: button-exact-text
+    applies: [click, clickExpectApi]
+    note: 按钮按完整文字匹配；「保存」「保存并提交」「保存并新建」并存时，找「保存」要排除带「并」的。删除确认气泡按钮文字常为「确 定」（含空格）。
+    source: 2026-11-04 实测（新建误定到保存并新建）
+  - id: save-http-200
+    applies: [clickExpectApi]
+    note: HZERO 保存接口 HTTP 状态通常恒为 200，成败看响应体 success/failed/message；只看「操作成功」提示不算通过，要刷新或重新打开回查数据。
+    source: 2026-11-04 实测（新增数据项接口成功但查不出）
+  - id: filter-input-empty
+    applies: [tableFilterQuery]
+    note: 表头行内筛选输入框空值时带 -input-empty 类，可据此找到待填的筛选框。
+    source: 2026-11-04 实测

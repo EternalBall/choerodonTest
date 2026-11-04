@@ -687,6 +687,46 @@ program
     }
   });
 
+program
+  .command('cards')
+  .description('生成操作卡（给自主测试 agent 的定位/交互提示，不含预期结果）：artifacts/<slug>/operation-cards.md；需已 gen 过')
+  .requiredOption('-f, --feature <slug>', '功能 slug，如 feat_294217dc')
+  .option('-p, --project <path>', '被测前端源码根（配合 --route 判定生效源码）', TARGET_PROJECT_DEFAULT)
+  .option(...ROUTE_OPT)
+  .option(...ROUTE_ROOTS_OPT)
+  .option('-o, --out <file>', '输出路径，默认 artifacts/<slug>/operation-cards.md')
+  .action(async (opts: { feature: string; project: string; route?: string; routeRoots?: string; out?: string }) => {
+    const slug = opts.feature;
+    const { renderOperationCards } = await import('../cards/operationCards.js');
+    const artifact = FeatureArtifactSchema.parse(parseYaml(await fs.readFile(path.join(PATHS.artifacts, slug, 'feature.yaml'), 'utf8')));
+    const suite = parseYaml(await fs.readFile(path.join(PATHS.generatedCases, slug, 'suite.yaml'), 'utf8')) as { cases: never[] };
+    const gen = parseYaml(await fs.readFile(path.join(PATHS.elements, slug, 'generated.yaml'), 'utf8')) as Record<string, Record<string, Record<string, unknown>>>;
+    const notesFile = path.join(PATHS.platformKnowledge, 'choerodon', 'interaction-notes.yaml');
+    const notes = (parseYaml(await fs.readFile(notesFile, 'utf8')) as { notes: never[] }).notes;
+    let routeReport: string[] | undefined;
+    let sourceDir: string | undefined;
+    if (opts.route) {
+      const { pickEffectiveFeatureDir } = await import('../analyzer/routeResolve.js');
+      const picked = await pickEffectiveFeatureDir({ roots: [opts.project, ...splitRoots(opts.routeRoots)], route: opts.route });
+      routeReport = picked.report;
+      sourceDir = picked.featureDir;
+    }
+    const md = renderOperationCards({
+      feature: artifact.feature,
+      slug,
+      cases: suite.cases,
+      lib: gen[slug] ?? {},
+      fieldRules: artifact.field_rules as never,
+      apis: artifact.apis as string[] | undefined,
+      notes,
+      routeReport,
+      sourceDir,
+    });
+    const out = opts.out ?? path.join(PATHS.artifacts, slug, 'operation-cards.md');
+    await fs.writeFile(out, md, 'utf8');
+    console.log(`操作卡: ${out}（${suite.cases.length} 个操作）`);
+  });
+
 program.parseAsync(process.argv).catch((err) => {
   // handoff 模式：LLM 请求已落盘等待外部 agent 应答，属正常暂停，退出码 3 供调用方识别
   if (err instanceof LlmHandoffPendingError) {
