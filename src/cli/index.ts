@@ -52,6 +52,11 @@ dotenv.config();
  * 可用 .env 的 TARGET_PROJECT 或命令行 -p 覆盖。
  */
 const TARGET_PROJECT_DEFAULT = process.env.TARGET_PROJECT || '../../repos/pdl-front';
+/** 参与路由 priority 比较的其他前端仓库根（逗号分隔，如产品源码）；被测项目根总排第一 */
+const ROUTE_ROOTS_DEFAULT = process.env.ATA_ROUTE_ROOTS || '';
+const splitRoots = (v?: string) => (v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+const ROUTE_OPT = ['--route <path>', '功能入口路由（如 /hmes/acquisition/data-collection）：按各包 config 的 priority 取运行时生效的源码目录'] as const;
+const ROUTE_ROOTS_OPT = ['--route-roots <list>', '参与 priority 比较的其他前端仓库根，逗号分隔（默认 ATA_ROUTE_ROOTS）', ROUTE_ROOTS_DEFAULT] as const;
 
 async function ensureDirs() {
   for (const d of [
@@ -119,13 +124,17 @@ program
   .option('-d, --dir <path>', '功能源码目录，读取该目录下完整文件，优先于关键词检索')
   .option('--baseline <label>', '用该基线锚定分析 id 与结构（默认 v1，存在才启用）')
   .option('--no-baseline', '不使用基线锚定')
-  .action(async (opts: { feature: string; project: string; dir?: string; baseline?: string | boolean }) => {
+  .option(...ROUTE_OPT)
+  .option(...ROUTE_ROOTS_OPT)
+  .action(async (opts: { feature: string; project: string; dir?: string; baseline?: string | boolean; route?: string; routeRoots?: string }) => {
     await ensureDirs();
     console.warn('\n提示: analyze 已合并到 gen，推荐: pnpm ata gen -f ... -p ...\n');
     const outputSlug = await resolveOutputSlugForFeature(opts.feature);
     const artifact = await analyzeFeatureFromSource(opts.feature, opts.project, {
       featureDir: opts.dir,
       baseline: opts.baseline === false ? false : typeof opts.baseline === 'string' ? opts.baseline : undefined,
+      route: opts.route,
+      routeRoots: splitRoots(opts.routeRoots),
     });
     const result = await runGenPipeline({
       artifact,
@@ -373,6 +382,8 @@ program
   .option('-i, --input <file>', '已有 artifacts/<slug>/feature.yaml，仅重新生成测试脚本')
   .option('-d, --dir <path>', '功能源码目录，读取该目录下完整文件，优先于关键词检索')
   .option('--meta-only', '只写元操作文件，不生成 suite（需 -f 且 -p）')
+  .option(...ROUTE_OPT)
+  .option(...ROUTE_ROOTS_OPT)
   .option('--from-knowledge', '与 -f 同义，优先 knowledge/features')
   .option('--archive-v1', '已有元操作时，不询问直接存档 v1（尚无 v1 时）')
   .option('--no-archive-prompt', '跳过「存档 v1」询问（不自动存档）')
@@ -386,6 +397,8 @@ program
       archiveV1?: boolean;
       noArchivePrompt?: boolean;
       dir?: string;
+      route?: string;
+      routeRoots?: string;
     }) => {
       await ensureDirs();
       const { parse } = await import('yaml');
@@ -398,6 +411,8 @@ program
         outputSlug = await resolveOutputSlugForFeature(opts.feature);
         artifact = await analyzeFeatureFromSource(opts.feature, opts.project, {
           featureDir: opts.dir,
+          route: opts.route,
+          routeRoots: splitRoots(opts.routeRoots),
         });
         writeArtifact = true;
       } else if (opts.input) {

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import path from 'node:path';
 import { logger } from '../core/logger.js';
 import type { FeatureArtifact } from '../core/schema.js';
 import { assignStableOperationIds } from '../core/operationId.js';
@@ -13,6 +14,7 @@ import { anchorToBaseline, formatBaselineForPrompt, loadBaselineArtifact, pruneU
 import { llmAnalyzeFeature } from './llmAnalyze.js';
 import { applyControlCatalog, buildControlCatalog, stripUnknownElements } from './controlCatalog.js';
 import { locatePages, pickPageEntries } from './llmLocate.js';
+import { pickEffectiveFeatureDir } from './routeResolve.js';
 
 export type AnalyzeOptions = {
   feature: string;
@@ -21,6 +23,10 @@ export type AnalyzeOptions = {
   featureDir?: string;
   /** 基线标签（默认 v1，存在才启用）；false 表示不锚定 */
   baseline?: string | false;
+  /** 功能入口路由（父路由或页面路由）：按 config 的 priority 选出运行时生效的源码目录 */
+  route?: string;
+  /** 参与 priority 比较的其他前端仓库根（如产品源码）；projectRoot 总是排第一，优先级相同时靠前者胜 */
+  routeRoots?: string[];
 };
 
 /** 目录模式读的是完整文件，默认 80k 上限不够，放宽到 400k */
@@ -31,10 +37,21 @@ const FEATURE_DIR_MAX_TOTAL_CHARS = 400_000;
  * 失败直接抛错，无启发式兜底（ADR 0011）；缺手册则失败（ADR 0007/0008）。
  */
 export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtifact> {
+  // 多包同路由时只分析 priority 最高（运行时生效）的那份源码，避免把产品版才有的控件当成存在
+  let featureDir = opts.featureDir;
+  if (opts.route || featureDir) {
+    const picked = await pickEffectiveFeatureDir({
+      roots: [opts.projectRoot, ...(opts.routeRoots ?? [])],
+      route: opts.route,
+      featureDir: featureDir ? path.resolve(opts.projectRoot, featureDir) : undefined,
+    });
+    featureDir = picked.featureDir;
+    if (picked.report.length) logger.info({ featureDir }, `路由生效源码判定：\n${picked.report.join('\n')}`);
+  }
   const { snippets } = await retrieveFeatureCode({
     feature: opts.feature,
     projectRoot: opts.projectRoot,
-    featureDir: opts.featureDir,
+    featureDir,
   });
   // 按源码 import 来源（choerodon-ui/pro vs choerodon-ui）按需选手册
   const playbooks = await loadPlaybooksForSources(snippets.map((s) => s.content));
@@ -66,7 +83,7 @@ export async function analyzeFeature(opts: AnalyzeOptions): Promise<FeatureArtif
     feature: opts.feature,
     snippets,
     playbooks,
-    maxTotalChars: opts.featureDir ? FEATURE_DIR_MAX_TOTAL_CHARS : undefined,
+    maxTotalChars: featureDir ? FEATURE_DIR_MAX_TOTAL_CHARS : undefined,
     // 有控件目录时不注入旧基线：旧基线里的 id 会被 LLM 原样抄回（见 v1 基线循环问题）
     baselineBlock: !controlCatalog.length && base ? formatBaselineForPrompt(base) : undefined,
     controlCatalog,
